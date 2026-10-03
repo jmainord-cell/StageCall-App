@@ -30,4 +30,4 @@ All in `index.html`:
 
 ## Not built yet
 
-Accounts and login, real uploads (video, audio, photos), messaging, payments and deposits, a fan/listener role, and a real database.
+Accounts and login, real uploads (video, audio, photos), messaging, payments and deposits, and a fan/listener role. The app does not use a database yet; the schema for one is in [`db/`](db/README.md) (Supabase/PostgreSQL), ready to connect.
