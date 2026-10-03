@@ -1,0 +1,548 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stagecall</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&amp;family=DM+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+:root {
+  --ink: #111016;
+  --s1: #1B1A22;
+  --s2: #26242F;
+  --s3: #2E2B38;
+  --line: #34313F;
+  --text: #F4F2F8;
+  --mute: #A9A5B8;
+  --accent: #F5A524; /* change this to re-color the whole app */
+  --teal: #38D1BF;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: #07070a;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  color: var(--text);
+}
+button { font-family: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+h1, h2, p { margin: 0; }
+.display { font-family: 'Bricolage Grotesque', 'DM Sans', sans-serif; }
+
+.app {
+  width: 390px;
+  height: 844px;
+  max-height: 100vh;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--ink);
+  border-radius: 28px;
+}
+@media (max-width: 480px) {
+  body { display: block; }
+  .app { width: 100vw; height: 100vh; height: 100dvh; max-height: none; border-radius: 0; }
+}
+
+.noscroll { scrollbar-width: none; }
+.noscroll::-webkit-scrollbar { display: none; }
+
+/* header */
+.header { height: 64px; flex-shrink: 0; padding: 0 16px 0 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--s2); }
+.brand { display: flex; align-items: center; gap: 10px; }
+.logo { width: 28px; height: 28px; border-radius: 9px; background: var(--accent); color: var(--ink); display: flex; align-items: center; justify-content: center; }
+.brand-name { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+.seg { display: flex; padding: 2px; border-radius: 26px; background: var(--s1); border: 1px solid var(--line); }
+.seg button { min-height: 44px; padding: 0 16px; border-radius: 22px; border: 0; font-size: 15px; font-weight: 700; background: transparent; color: #D8D5E2; }
+.seg button.on { background: var(--accent); color: var(--ink); }
+
+/* layout */
+.content { flex: 1; min-height: 0; position: relative; overflow: hidden; }
+.scroll { position: absolute; inset: 0; overflow-y: auto; }
+.pad { padding: 24px 20px 28px; }
+h1.title { font-size: 30px; line-height: 1.1; font-weight: 700; letter-spacing: -0.8px; }
+.sub { margin-top: 8px; font-size: 15px; line-height: 1.4; color: var(--mute); }
+h2.section { margin-top: 24px; font-size: 18px; font-weight: 700; }
+.label { font-size: 13px; font-weight: 700; letter-spacing: 0.8px; color: var(--mute); }
+
+/* tab bar */
+.tabbar { height: 72px; flex-shrink: 0; display: flex; border-top: 1px solid var(--s2); background: var(--ink); }
+.tab { flex: 1; border: 0; background: transparent; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--mute); }
+.tab.on { color: var(--accent); }
+
+/* chips and buttons */
+.row { display: flex; gap: 8px; overflow-x: auto; }
+.chip { display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 16px; border-radius: 22px; flex-shrink: 0; white-space: nowrap; font-size: 15px; font-weight: 600; border: 1px solid var(--line); background: var(--s2); color: var(--text); }
+.chip.on { border-color: var(--accent); background: var(--accent); color: var(--ink); }
+.btn { width: 100%; min-height: 46px; border-radius: 23px; font-size: 16px; font-weight: 700; border: 1px solid var(--accent); background: var(--accent); color: var(--ink); }
+.btn.ghost { border-color: #5A566B; background: transparent; color: var(--text); }
+.dashed { min-height: 48px; border-radius: 14px; border: 1px dashed #5A566B; background: transparent; color: #D8D5E2; font-size: 14px; font-weight: 600; }
+
+/* venue: type buttons */
+.types { margin-top: 20px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.type { height: 118px; padding: 16px; border-radius: 20px; border: 1px solid var(--line); background: var(--s1); color: var(--text); display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; text-align: left; }
+.type .ic { color: var(--accent); }
+.type b { display: block; font-size: 18px; }
+.type small { display: block; margin-top: 2px; font-size: 13px; color: var(--mute); }
+
+/* cards */
+.card { padding: 14px; border-radius: 20px; background: var(--s1); border: 1px solid var(--s3); display: flex; flex-direction: column; gap: 12px; }
+.mine { padding: 14px 16px; border-radius: 16px; background: var(--s1); border: 1px solid var(--s3); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.thumb { width: 76px; height: 76px; border-radius: 14px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.85); }
+.badge { flex-shrink: 0; padding: 8px 12px; border-radius: 16px; font-size: 13px; font-weight: 700; background: var(--s2); color: var(--mute); }
+.badge.on { background: var(--accent); color: var(--ink); }
+.travel { align-self: flex-start; padding: 6px 12px; border-radius: 14px; background: #12332E; color: var(--teal); font-size: 13px; font-weight: 700; }
+
+/* reels */
+.reels { position: absolute; inset: 0; overflow-y: auto; scroll-snap-type: y mandatory; }
+.reel { position: relative; height: 100%; scroll-snap-align: start; overflow: hidden; }
+.reel-center { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.9); }
+.play { width: 80px; height: 80px; border-radius: 40px; background: rgba(0,0,0,0.35); border: 2px solid rgba(255,255,255,0.7); display: flex; align-items: center; justify-content: center; }
+.kind { position: absolute; top: 80px; left: 16px; padding: 4px 10px; border-radius: 12px; background: rgba(0,0,0,0.45); font-size: 12px; font-weight: 700; letter-spacing: 1px; }
+.reel-info { position: absolute; left: 0; right: 0; bottom: 0; padding: 72px 84px 24px 20px; background: linear-gradient(to top, rgba(0,0,0,0.82), rgba(0,0,0,0)); display: flex; flex-direction: column; align-items: flex-start; gap: 6px; color: #fff; }
+.reel-info .name { font-size: 26px; font-weight: 700; line-height: 1.1; letter-spacing: -0.5px; }
+.reel-cta { min-height: 44px; padding: 0 20px; border-radius: 22px; font-size: 15px; font-weight: 700; border: 2px solid var(--accent); background: var(--accent); color: var(--ink); }
+.reel-cta.done { border-color: #fff; background: transparent; color: #fff; }
+.heart { position: absolute; right: 16px; bottom: 36px; width: 52px; height: 52px; border-radius: 26px; border: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; color: #fff; }
+.heart.on { color: #FF5C7A; }
+.reel-mode { position: absolute; top: 12px; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none; }
+.reel-mode .seg { background: rgba(17,16,22,0.78); border-color: rgba(255,255,255,0.18); pointer-events: auto; }
+
+/* profile */
+.cover { height: 140px; }
+.avatar { margin-top: -42px; width: 84px; height: 84px; border: 4px solid var(--ink); background: var(--accent); color: var(--ink); display: flex; align-items: center; justify-content: center; }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.social { min-height: 48px; border-radius: 14px; font-size: 14px; font-weight: 600; border: 1px dashed #5A566B; background: transparent; color: var(--text); }
+.social.on { border: 1px solid var(--accent); background: var(--s2); }
+.vid { height: 110px; border-radius: 14px; display: flex; align-items: center; justify-content: center; color: #fff; }
+.audio { grid-column: span 2; display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--s1); border: 1px solid var(--s3); }
+.bars { margin-top: 6px; display: flex; align-items: flex-end; gap: 3px; height: 20px; }
+.bars i { width: 3px; border-radius: 2px; background: #7C778C; }
+.photo { height: 104px; border-radius: 12px; }
+.pill { padding: 10px 14px; border-radius: 20px; background: var(--s1); border: 1px solid var(--line); font-size: 14px; }
+.pill.solid { background: var(--s2); border: 0; font-weight: 600; }
+.wrap { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* sheet + toast */
+.overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.62); }
+.overlay > .backdrop { position: absolute; inset: 0; border: 0; background: transparent; }
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; max-height: 92%; overflow-y: auto; padding: 22px 20px 24px; border-radius: 26px 26px 0 0; background: var(--s1); border-top: 1px solid var(--line); }
+.toast { position: absolute; left: 20px; right: 20px; bottom: 88px; padding: 14px 16px; border-radius: 16px; background: var(--text); color: var(--ink); font-size: 14px; font-weight: 600; line-height: 1.35; text-align: center; }
+</style>
+</head>
+<body>
+<div id="app" class="app"></div>
+
+<script>
+// ---------------------------------------------------------------
+// Stagecall prototype. All data below is sample data kept in memory.
+// ---------------------------------------------------------------
+
+// How many miles each "how far will you go" option covers.
+var RANGE_MILES = { Town: 15, Region: 75, Statewide: 100000 };
+
+var TYPE_LABEL = { DJ: 'DJ', Band: 'Band', Solo: 'Solo musician', Singer: 'Singer' };
+
+var THUMBS = [
+  'linear-gradient(135deg,#5B2A86,#2A1245)',
+  'linear-gradient(135deg,#0E6E7E,#0A1F2E)',
+  'linear-gradient(135deg,#9C3D2E,#2A0F14)',
+  'linear-gradient(135deg,#7A5A12,#1A1408)',
+  'linear-gradient(135deg,#2C3A6B,#10131F)',
+  'linear-gradient(135deg,#2C6B52,#0E1C16)',
+  'linear-gradient(135deg,#6B2C4A,#1C0E16)'
+];
+
+var REELS = [
+  { id: 'a1', kind: 'artist', name: 'Mara Voss', line: 'Singer · Jazz & soul', where: '12 mi away', caption: 'Late set at the loft.', bg: 'linear-gradient(160deg,#5B2A86,#1C0F33 70%)' },
+  { id: 'a2', kind: 'artist', name: 'DJ Kestrel', line: 'DJ · House', where: '55 mi away', caption: 'Two hours of warm-up grooves.', bg: 'linear-gradient(160deg,#0E6E7E,#0A1F2E 70%)' },
+  { id: 'a3', kind: 'artist', name: 'The Loose Ends', line: 'Band · Indie rock', where: '90 mi away', caption: 'Four-piece, own PA, happy to travel.', bg: 'linear-gradient(160deg,#9C3D2E,#2A0F14 70%)' },
+  { id: 'a4', kind: 'artist', name: 'Eli Park', line: 'Solo musician · Acoustic', where: '4 mi away', caption: 'Songs for a patio crowd.', bg: 'linear-gradient(160deg,#7A5A12,#1A1408 70%)' },
+  { id: 'v1', kind: 'venue', name: 'The Rusty Anchor', line: 'Bar with a small stage', where: '1 mi away', caption: 'Stage and PA provided. Bands Thursday to Saturday.', bg: 'linear-gradient(160deg,#2C3A6B,#10131F 70%)' },
+  { id: 'v2', kind: 'venue', name: 'Velvet Room', line: 'Club · DJ booth', where: '2 mi away', caption: 'Late nights, dance floor, DJ booth with monitors.', bg: 'linear-gradient(160deg,#6B2C4A,#1C0E16 70%)' },
+  { id: 'v3', kind: 'venue', name: 'Café Lune', line: 'Café · Acoustic corner', where: '38 mi away', caption: 'Weekend evenings, small crowd, good listening room.', bg: 'linear-gradient(160deg,#2C6B52,#0E1C16 70%)' }
+];
+
+var SOCIALS = [
+  { k: 'ig', label: 'Instagram' },
+  { k: 'yt', label: 'YouTube' },
+  { k: 'sp', label: 'Spotify' },
+  { k: 'sc', label: 'SoundCloud' }
+];
+
+// Icons (24x24 stroke icons)
+function icon(paths, size, sw) {
+  return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="' + (sw || 2) + '" stroke-linecap="round" stroke-linejoin="round">' + paths + '</svg>';
+}
+var IC = {
+  logo: '<path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/>',
+  dj: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2"/>',
+  band: '<circle cx="9" cy="8" r="3"/><path d="M3 19c0-3 2.7-5 6-5s6 2 6 5"/><circle cx="17" cy="9" r="2.5"/><path d="M17 14c2.5 0 4 1.7 4 4"/>',
+  solo: '<path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/>',
+  singer: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/>',
+  building: '<path d="M4 21V9l8-5 8 5v12M9 21v-6h6v6"/>',
+  pin: '<path d="M12 21s7-6 7-11a7 7 0 10-14 0c0 5 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  tabGigs: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 9h8M8 13h8M8 17h5"/>',
+  tabReels: '<rect x="4" y="3" width="16" height="18" rx="3"/><path d="M10 9l5 3-5 3z"/>',
+  tabProfile: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/>'
+};
+var PLAY = '<svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 001.5.86l10.5-6.5a1 1 0 000-1.72L9.5 4.64A1 1 0 008 5.5z"/></svg>';
+function heart(on) {
+  return '<svg width="26" height="26" viewBox="0 0 24 24" fill="' + (on ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7-4.4-7-10a4 4 0 017-2.6A4 4 0 0119 10c0 5.6-7 10-7 10z"/></svg>';
+}
+
+// ---------------------------------------------------------------
+// State
+// ---------------------------------------------------------------
+var state = {
+  role: 'venue',          // 'venue' | 'artist'
+  tab: 'gigs',            // 'gigs' | 'reels' | 'profile'
+  reelMode: 'artists',    // 'artists' | 'venues'
+  filter: 'All',          // artist gig type filter
+  range: 'Region',        // 'Town' | 'Region' | 'Statewide'
+  sheet: null,            // gig type being posted, or null
+  form: defaultForm(),
+  gigs: [
+    { id: 'g1', venue: 'The Corner Stage', type: 'Singer', when: 'Fri · 8 PM', pay: '$180', genre: 'Jazz', dist: '0.4 mi', mine: true, applicants: 0 },
+    { id: 'g2', venue: 'The Rusty Anchor', type: 'Band', when: 'Tonight · 9 PM', pay: '$300', genre: 'Rock', dist: '1.2 mi', mine: false, applicants: 0 },
+    { id: 'g3', venue: 'Velvet Room', type: 'DJ', when: 'Fri · 10 PM', pay: '$250', genre: 'House', dist: '2.4 mi', mine: false, applicants: 0 },
+    { id: 'g4', venue: 'Café Lune', type: 'Solo', when: 'Sat · 7 PM', pay: '$120', genre: 'Acoustic', dist: '0.8 mi', mine: false, applicants: 0 },
+    { id: 'g5', venue: 'Harbor House', type: 'Singer', when: 'Sat · 8 PM', pay: '$180', genre: 'Standards', dist: '3.1 mi', mine: false, applicants: 0 },
+    { id: 'g6', venue: 'Brick & Barrel', type: 'Band', when: 'Sun · 4 PM', pay: '$200', genre: 'Blues', dist: '1.9 mi', mine: false, applicants: 0 },
+    { id: 'g7', venue: 'The Grain Elevator', type: 'Band', when: 'Sat · 9 PM', pay: '$450', genre: 'Country', dist: '38 mi · Hollis Creek', travel: 'Gas covered', mine: false, applicants: 0 },
+    { id: 'g8', venue: 'Lakeside Lodge', type: 'Solo', when: 'Fri · 6 PM', pay: '$200', genre: 'Acoustic', dist: '64 mi · Pine Hollow', travel: 'Gas + room', mine: false, applicants: 0 },
+    { id: 'g9', venue: 'Depot Taproom', type: 'DJ', when: 'Sat · 10 PM', pay: '$350', genre: 'House', dist: '112 mi · Dunmore', travel: 'Gas + room', mine: false, applicants: 0 },
+    { id: 'g10', venue: 'County Fair Stage', type: 'Band', when: 'Sun · 2 PM', pay: '$600', genre: 'Country', dist: '145 mi · Fairview', travel: 'Lodging included', mine: false, applicants: 0 }
+  ],
+  applied: {},
+  liked: {},
+  invited: {},
+  linked: { ig: true, yt: false, sp: true, sc: false },
+  toast: ''
+};
+
+function defaultForm() {
+  return { date: 'Tonight', time: '9 PM', pay: '$200', genre: 'Any', reach: 'Region', travel: 'None' };
+}
+
+// ---------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------
+function esc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function chip(label, on, attrs) {
+  return '<button class="chip' + (on ? ' on' : '') + '" ' + attrs + '>' + esc(label) + '</button>';
+}
+function formChips(key, options) {
+  return options.map(function (o) {
+    return chip(o, state.form[key] === o, 'data-act="form" data-key="' + key + '" data-val="' + esc(o) + '"');
+  }).join('');
+}
+var toastTimer = null;
+function showToast(msg) {
+  state.toast = msg;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { state.toast = ''; render(); }, 2800);
+}
+
+// ---------------------------------------------------------------
+// Views
+// ---------------------------------------------------------------
+function headerView() {
+  var v = state.role === 'venue';
+  return '<div class="header">' +
+    '<div class="brand"><div class="logo">' + icon(IC.logo, 18, 2.4) + '</div><div class="brand-name display">Stagecall</div></div>' +
+    '<div class="seg">' +
+      '<button class="' + (v ? 'on' : '') + '" data-act="role" data-val="venue">Venue</button>' +
+      '<button class="' + (!v ? 'on' : '') + '" data-act="role" data-val="artist">Artist</button>' +
+    '</div></div>';
+}
+
+function venueGigsView() {
+  var mine = state.gigs.filter(function (g) { return g.mine; });
+  var list = mine.map(function (g) {
+    var n = g.applicants + (state.applied[g.id] ? 1 : 0);
+    var text = n === 0 ? 'No applicants yet' : (n === 1 ? '1 applied' : n + ' applied');
+    return '<div class="mine"><div style="min-width:0">' +
+      '<div style="font-size:17px;font-weight:700">' + esc(TYPE_LABEL[g.type]) + ' wanted</div>' +
+      '<div style="margin-top:3px;font-size:14px;color:var(--mute)">' + esc(g.when) + ' · ' + esc(g.genre) + '</div>' +
+      '<div style="margin-top:3px;font-size:14px;font-weight:600;color:var(--accent)">' + esc(g.pay) + '</div>' +
+      '<div style="margin-top:3px;font-size:13px;color:var(--mute)">Open to ' + esc(g.reach || 'Region') + ' · ' + (g.travel ? 'Travel help: ' + esc(g.travel) : 'No travel help') + '</div>' +
+      '</div><div class="badge' + (n > 0 ? ' on' : '') + '">' + text + '</div></div>';
+  }).join('');
+
+  function typeBtn(t, ic, sub) {
+    return '<button class="type" data-act="openSheet" data-val="' + t + '"><span class="ic">' + icon(ic, 32, 1.8) + '</span>' +
+      '<span><b>' + TYPE_LABEL[t] + '</b><small>' + sub + '</small></span></button>';
+  }
+
+  return '<div class="scroll noscroll pad" data-keep="venue-gigs">' +
+    '<h1 class="title display">What are you looking for?</h1>' +
+    '<p class="sub">Pick a type and post your gig. You choose how far to reach: your town, your region, or the whole state.</p>' +
+    '<div class="types">' +
+      typeBtn('DJ', IC.dj, 'Someone to spin') +
+      typeBtn('Band', IC.band, 'A full lineup') +
+      typeBtn('Solo', IC.solo, 'One performer') +
+      typeBtn('Singer', IC.singer, 'A vocalist') +
+    '</div>' +
+    '<h2 style="margin-top:32px;font-size:18px;font-weight:700">Your open gigs</h2>' +
+    (mine.length === 0 ? '<p class="sub" style="font-size:14px;margin-top:10px">Nothing posted yet. Pick a type above to post your first gig.</p>' : '') +
+    '<div style="margin-top:12px;display:flex;flex-direction:column;gap:10px">' + list + '</div>' +
+    '</div>';
+}
+
+function artistGigsView() {
+  var maxMiles = RANGE_MILES[state.range];
+  var shown = state.gigs.filter(function (g) {
+    return (state.filter === 'All' || g.type === state.filter) && parseFloat(g.dist) <= maxMiles;
+  });
+  var cards = shown.map(function (g) {
+    var on = !!state.applied[g.id];
+    return '<div class="card"><div style="display:flex;gap:14px">' +
+      '<div class="thumb" style="background:' + THUMBS[state.gigs.indexOf(g) % THUMBS.length] + '">' + icon(IC.building, 30, 1.8) + '</div>' +
+      '<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">' +
+        '<div style="font-size:17px;font-weight:700;line-height:1.2">' + esc(g.venue) + '</div>' +
+        '<div style="font-size:14px;color:var(--mute)">' + esc(TYPE_LABEL[g.type]) + ' · ' + esc(g.genre) + '</div>' +
+        '<div style="font-size:14px">' + esc(g.when) + '</div>' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;font-size:14px;gap:8px">' +
+          '<span style="font-weight:700;color:var(--accent)">' + esc(g.pay) + '</span>' +
+          '<span style="display:flex;align-items:center;gap:4px;color:var(--mute)">' + icon(IC.pin, 14) + esc(g.dist) + '</span>' +
+        '</div></div></div>' +
+      (g.travel ? '<div class="travel">Travel help: ' + esc(g.travel) + '</div>' : '') +
+      '<button class="btn' + (on ? ' ghost' : '') + '" data-act="apply" data-id="' + g.id + '">' + (on ? 'Applied. Tap to withdraw' : 'Apply') + '</button>' +
+      '</div>';
+  }).join('');
+
+  var ranges = [
+    ['Town', 'My town · 15 mi'],
+    ['Region', 'My region · 75 mi'],
+    ['Statewide', 'Statewide']
+  ].map(function (r) { return chip(r[1], state.range === r[0], 'data-act="range" data-val="' + r[0] + '"'); }).join('');
+
+  var filters = ['All', 'DJ', 'Band', 'Solo', 'Singer'].map(function (k) {
+    return chip(k, state.filter === k, 'data-act="filter" data-val="' + k + '"');
+  }).join('');
+
+  return '<div class="scroll noscroll" style="padding:24px 0 28px" data-keep="artist-gigs">' +
+    '<div style="padding:0 20px"><h1 class="title display">Gigs in reach</h1>' +
+    '<p class="sub">Your town, your region, or anywhere in the state. Travel help shows on each gig.</p></div>' +
+    '<div class="label" style="margin-top:16px;padding:0 20px">HOW FAR WILL YOU GO?</div>' +
+    '<div class="row noscroll" style="margin-top:8px;padding:0 20px">' + ranges + '</div>' +
+    '<div class="row noscroll" style="margin-top:10px;padding:0 20px">' + filters + '</div>' +
+    '<div style="margin-top:16px;padding:0 20px;display:flex;flex-direction:column;gap:12px">' +
+      (shown.length === 0 ? '<p class="sub" style="padding:8px 0">No gigs in this range yet. Try Region or Statewide to see more.</p>' : '') +
+      cards + '</div></div>';
+}
+
+function reelsView() {
+  var isVenue = state.role === 'venue';
+  var want = state.reelMode === 'artists' ? 'artist' : 'venue';
+  var cards = REELS.filter(function (r) { return r.kind === want; }).map(function (r) {
+    var liked = !!state.liked[r.id];
+    var done = !!state.invited[r.id];
+    var base, after;
+    if (r.kind === 'artist') {
+      base = isVenue ? 'Invite to a gig' : 'Follow';
+      after = isVenue ? 'Invite sent' : 'Following';
+    } else {
+      base = 'Save venue';
+      after = 'Venue saved';
+    }
+    return '<div class="reel" style="background:' + r.bg + '">' +
+      '<div class="reel-center">' + (r.kind === 'artist' ? '<div class="play">' + PLAY + '</div>' : icon(IC.building, 72, 1.4)) + '</div>' +
+      '<div class="kind">' + (r.kind === 'artist' ? 'VIDEO' : 'PHOTOS') + '</div>' +
+      '<div class="reel-info">' +
+        '<div class="name display">' + esc(r.name) + '</div>' +
+        '<div style="font-size:14px;font-weight:600">' + esc(r.line) + ' · ' + esc(r.where) + '</div>' +
+        '<div style="font-size:14px;line-height:1.4;color:rgba(255,255,255,0.85)">' + esc(r.caption) + '</div>' +
+        '<button class="reel-cta' + (done ? ' done' : '') + '" data-act="cta" data-id="' + r.id + '">' + (done ? after : base) + '</button>' +
+      '</div>' +
+      '<button class="heart' + (liked ? ' on' : '') + '" aria-label="Like" data-act="like" data-id="' + r.id + '">' + heart(liked) + '</button>' +
+      '</div>';
+  }).join('');
+
+  return '<div style="position:absolute;inset:0">' +
+    '<div class="reels noscroll" data-keep="reels">' + cards + '</div>' +
+    '<div class="reel-mode"><div class="seg">' +
+      '<button class="' + (state.reelMode === 'artists' ? 'on' : '') + '" data-act="mode" data-val="artists">Artists</button>' +
+      '<button class="' + (state.reelMode === 'venues' ? 'on' : '') + '" data-act="mode" data-val="venues">Venues</button>' +
+    '</div></div></div>';
+}
+
+function artistProfileView() {
+  var socials = SOCIALS.map(function (d) {
+    var on = !!state.linked[d.k];
+    return '<button class="social' + (on ? ' on' : '') + '" data-act="social" data-val="' + d.k + '">' + (on ? d.label + ' · Linked' : '+ Link ' + d.label) + '</button>';
+  }).join('');
+  var heights = [8, 16, 11, 20, 13, 18, 9, 15, 20, 12, 17, 8, 14, 19, 10, 16];
+  var bars = heights.map(function (h) { return '<i style="height:' + h + 'px"></i>'; }).join('');
+
+  return '<div class="scroll noscroll" style="padding-bottom:28px" data-keep="artist-profile">' +
+    '<div class="cover" style="background:linear-gradient(135deg,#5B2A86,#1C0F33)"></div>' +
+    '<div style="padding:0 20px">' +
+      '<div class="avatar display" style="border-radius:42px;font-size:28px;font-weight:700">MV</div>' +
+      '<h1 class="display" style="margin-top:12px;font-size:28px;font-weight:700;letter-spacing:-0.6px">Mara Voss</h1>' +
+      '<p style="margin-top:4px;font-size:15px;color:var(--mute)">Singer · Jazz &amp; soul · Open to gigs</p>' +
+      '<p style="margin-top:12px;font-size:15px;line-height:1.5;color:#D8D5E2">[Short bio: who you are, what you play, where you have played.]</p>' +
+      '<h2 class="section">Socials &amp; music</h2>' +
+      '<div class="grid2" style="margin-top:12px">' + socials + '</div>' +
+      '<h2 class="section">Portfolio</h2>' +
+      '<div class="grid2" style="margin-top:12px">' +
+        '<div><div class="vid" style="background:linear-gradient(160deg,#0E6E7E,#0A1F2E)">' + PLAY + '</div><div style="margin-top:6px;font-size:14px;font-weight:600">Live at the loft</div><div style="font-size:13px;color:var(--mute)">Video</div></div>' +
+        '<div><div class="vid" style="background:linear-gradient(160deg,#9C3D2E,#2A0F14)">' + PLAY + '</div><div style="margin-top:6px;font-size:14px;font-weight:600">Rooftop session</div><div style="font-size:13px;color:var(--mute)">Video</div></div>' +
+        '<div class="audio"><div style="width:40px;height:40px;border-radius:20px;background:var(--accent);color:var(--ink);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 001.5.86l10.5-6.5a1 1 0 000-1.72L9.5 4.64A1 1 0 008 5.5z"/></svg></div>' +
+          '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600">Demo reel</div><div class="bars">' + bars + '</div></div>' +
+          '<div style="font-size:13px;color:var(--mute)">Audio</div></div>' +
+        '<button class="dashed" style="min-height:64px">+ Add video</button>' +
+        '<button class="dashed" style="min-height:64px">+ Add audio</button>' +
+      '</div></div></div>';
+}
+
+function venueProfileView() {
+  var photos = [
+    'linear-gradient(160deg,#2C3A6B,#10131F)',
+    'linear-gradient(160deg,#6B2C4A,#1C0E16)',
+    'linear-gradient(160deg,#2C6B52,#0E1C16)',
+    'linear-gradient(160deg,#7A5A12,#1A1408)',
+    'linear-gradient(160deg,#5B2A86,#1C0F33)'
+  ].map(function (b) { return '<div class="photo" style="background:' + b + '"></div>'; }).join('');
+
+  return '<div class="scroll noscroll" style="padding-bottom:28px" data-keep="venue-profile">' +
+    '<div class="cover" style="background:linear-gradient(135deg,#2C3A6B,#10131F)"></div>' +
+    '<div style="padding:0 20px">' +
+      '<div class="avatar" style="border-radius:22px">' + icon(IC.building, 38, 1.8) + '</div>' +
+      '<h1 class="display" style="margin-top:12px;font-size:28px;font-weight:700;letter-spacing:-0.6px">The Corner Stage</h1>' +
+      '<p style="margin-top:4px;font-size:15px;color:var(--mute)">Live room &amp; bar</p>' +
+      '<p style="margin-top:12px;font-size:15px;line-height:1.5;color:#D8D5E2">[About the venue: the vibe, the crowd, what nights you book.]</p>' +
+      '<h2 class="section">Photos</h2>' +
+      '<div class="grid3" style="margin-top:12px">' + photos +
+        '<button class="dashed photo" aria-label="Add photo" style="display:flex;align-items:center;justify-content:center">' + icon(IC.plus, 26) + '</button></div>' +
+      '<h2 class="section">Stage &amp; sound</h2>' +
+      '<div class="wrap" style="margin-top:12px"><span class="pill">Stage</span><span class="pill">PA system</span><span class="pill">Backline</span><span class="pill">DJ booth</span></div>' +
+      '<h2 class="section">What we book</h2>' +
+      '<div class="wrap" style="margin-top:12px"><span class="pill solid">DJ</span><span class="pill solid">Band</span><span class="pill solid">Solo musician</span><span class="pill solid">Singer</span></div>' +
+    '</div></div>';
+}
+
+function sheetView() {
+  if (!state.sheet) return '';
+  return '<div class="overlay">' +
+    '<button class="backdrop" aria-label="Close" data-act="closeSheet"></button>' +
+    '<div class="sheet noscroll" data-keep="sheet">' +
+      '<h2 class="display" style="font-size:24px;font-weight:700;letter-spacing:-0.5px">Post a ' + TYPE_LABEL[state.sheet] + ' gig</h2>' +
+      '<p style="margin-top:4px;font-size:14px;color:var(--mute)">Choose how far to reach and whether you can help with travel.</p>' +
+      '<div class="label" style="margin-top:18px">DATE</div><div class="row noscroll" style="margin-top:8px">' + formChips('date', ['Tonight', 'Tomorrow', 'Fri', 'Sat', 'Sun']) + '</div>' +
+      '<div class="label" style="margin-top:16px">START TIME</div><div class="row noscroll" style="margin-top:8px">' + formChips('time', ['7 PM', '8 PM', '9 PM', '10 PM']) + '</div>' +
+      '<div class="label" style="margin-top:16px">PAY</div><div class="row noscroll" style="margin-top:8px">' + formChips('pay', ['$100', '$150', '$200', '$300', '$500']) + '</div>' +
+      '<div class="label" style="margin-top:16px">STYLE</div><div class="row noscroll" style="margin-top:8px">' + formChips('genre', ['Any', 'Rock', 'Country', 'Jazz', 'House', 'Acoustic', 'Blues']) + '</div>' +
+      '<div class="label" style="margin-top:16px">DRAW ARTISTS FROM</div><div class="row noscroll" style="margin-top:8px">' + formChips('reach', ['Town', 'Region', 'Statewide']) + '</div>' +
+      '<div class="label" style="margin-top:16px">TRAVEL HELP</div><div class="row noscroll" style="margin-top:8px">' + formChips('travel', ['None', 'Gas', 'Gas + room']) + '</div>' +
+      '<button class="btn" style="margin-top:22px;min-height:52px;border-radius:26px;font-size:17px" data-act="post">Post gig</button>' +
+      '<button style="margin-top:8px;width:100%;min-height:48px;border-radius:24px;border:0;background:transparent;color:var(--mute);font-size:15px;font-weight:600" data-act="closeSheet">Cancel</button>' +
+    '</div></div>';
+}
+
+function tabView(key, label, ic) {
+  return '<button class="tab' + (state.tab === key ? ' on' : '') + '" data-act="tab" data-val="' + key + '">' + icon(ic, 24) + label + '</button>';
+}
+
+function view() {
+  var isVenue = state.role === 'venue';
+  var screen = '';
+  if (state.tab === 'gigs') screen = isVenue ? venueGigsView() : artistGigsView();
+  else if (state.tab === 'reels') screen = reelsView();
+  else screen = isVenue ? venueProfileView() : artistProfileView();
+
+  return headerView() +
+    '<div class="content">' + screen + '</div>' +
+    '<div class="tabbar">' + tabView('gigs', 'Gigs', IC.tabGigs) + tabView('reels', 'Reels', IC.tabReels) + tabView('profile', 'Profile', IC.tabProfile) + '</div>' +
+    sheetView() +
+    (state.toast ? '<div class="toast">' + esc(state.toast) + '</div>' : '');
+}
+
+// ---------------------------------------------------------------
+// Render + events
+// ---------------------------------------------------------------
+var root = document.getElementById('app');
+
+function render() {
+  // remember scroll positions so lists don't jump when something changes
+  var keep = {};
+  root.querySelectorAll('[data-keep]').forEach(function (el) { keep[el.dataset.keep] = el.scrollTop; });
+  root.innerHTML = view();
+  root.querySelectorAll('[data-keep]').forEach(function (el) {
+    if (keep[el.dataset.keep] != null) el.scrollTop = keep[el.dataset.keep];
+  });
+}
+
+function act(name, el) {
+  var val = el.dataset.val;
+  var id = el.dataset.id;
+  switch (name) {
+    case 'role': state.role = val; break;
+    case 'tab': state.tab = val; break;
+    case 'mode': state.reelMode = val; break;
+    case 'filter': state.filter = val; break;
+    case 'range': state.range = val; break;
+    case 'openSheet': state.sheet = val; state.form = defaultForm(); break;
+    case 'closeSheet': state.sheet = null; break;
+    case 'form': state.form[el.dataset.key] = val; break;
+    case 'post': {
+      var f = state.form;
+      state.gigs.unshift({
+        id: 'n' + Date.now(),
+        venue: 'The Corner Stage',
+        type: state.sheet,
+        when: f.date + ' · ' + f.time,
+        pay: f.pay,
+        genre: f.genre,
+        reach: f.reach,
+        travel: f.travel === 'None' ? '' : f.travel,
+        dist: '0.4 mi',
+        mine: true,
+        applicants: 0
+      });
+      state.sheet = null;
+      showToast('Gig posted. Switch to Artist to see how it looks.');
+      break;
+    }
+    case 'apply': {
+      var gig = state.gigs.filter(function (g) { return g.id === id; })[0];
+      var was = !!state.applied[id];
+      state.applied[id] = !was;
+      if (!was && gig) showToast('Applied to ' + gig.venue + '.');
+      break;
+    }
+    case 'like': state.liked[id] = !state.liked[id]; break;
+    case 'cta': {
+      var reel = REELS.filter(function (r) { return r.id === id; })[0];
+      var had = !!state.invited[id];
+      state.invited[id] = !had;
+      if (!had && reel) {
+        showToast(reel.kind === 'venue' ? reel.name + ' saved.' : (state.role === 'venue' ? 'Invite sent to ' + reel.name + '.' : 'Following ' + reel.name + '.'));
+      }
+      break;
+    }
+    case 'social': state.linked[val] = !state.linked[val]; break;
+  }
+  render();
+}
+
+root.addEventListener('click', function (e) {
+  var el = e.target.closest('[data-act]');
+  if (!el || !root.contains(el)) return;
+  act(el.dataset.act, el);
+});
+
+render();
+</script>
+</body>
+</html>
