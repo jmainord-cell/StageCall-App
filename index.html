@@ -30,6 +30,10 @@ body {
   color: var(--text);
 }
 button { font-family: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+button:disabled { cursor: default; }
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 h1, h2, p { margin: 0; }
 .display { font-family: 'Bricolage Grotesque', 'DM Sans', sans-serif; }
 
@@ -92,10 +96,23 @@ h2.section { margin-top: 24px; font-size: 18px; font-weight: 700; }
 
 /* cards */
 .card { padding: 14px; border-radius: 20px; background: var(--s1); border: 1px solid var(--s3); display: flex; flex-direction: column; gap: 12px; }
-.mine { padding: 14px 16px; border-radius: 16px; background: var(--s1); border: 1px solid var(--s3); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.mine { width: 100%; padding: 14px 16px; border-radius: 16px; background: var(--s1); border: 1px solid var(--s3); display: flex; align-items: center; justify-content: space-between; gap: 12px; text-align: left; color: var(--text); font-size: inherit; }
+.mine:hover { border-color: var(--line); background: #201F28; }
+.mine .go { margin-top: 8px; font-size: 13px; font-weight: 700; color: var(--accent); }
 .thumb { width: 76px; height: 76px; border-radius: 14px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.85); }
 .badge { flex-shrink: 0; padding: 8px 12px; border-radius: 16px; font-size: 13px; font-weight: 700; background: var(--s2); color: var(--mute); }
 .badge.on { background: var(--accent); color: var(--ink); }
+.badge.booked { background: #12332E; color: var(--teal); }
+.status { align-self: flex-start; padding: 6px 12px; border-radius: 14px; font-size: 13px; font-weight: 700; }
+.status.wait { background: var(--s2); color: #D8D5E2; }
+.status.ok { background: #12332E; color: var(--teal); }
+.status.no { background: var(--s2); color: var(--mute); }
+.btn:disabled { border-color: var(--line); background: var(--s2); color: var(--mute); }
+.btn.sm { flex: 1; min-height: 44px; font-size: 15px; }
+.person { padding: 12px; border-radius: 16px; background: var(--s2); display: flex; flex-direction: column; gap: 12px; }
+.initials { width: 44px; height: 44px; border-radius: 22px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; color: #fff; }
+.banner { margin-top: 16px; padding: 12px 14px; border-radius: 14px; background: #12332E; color: var(--teal); font-size: 14px; font-weight: 600; line-height: 1.4; }
+.link { border: 0; background: transparent; padding: 0; min-height: 44px; color: var(--mute); font-size: 14px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
 .travel { align-self: flex-start; padding: 6px 12px; border-radius: 14px; background: #12332E; color: var(--teal); font-size: 13px; font-weight: 700; }
 
 /* reels */
@@ -134,10 +151,18 @@ h2.section { margin-top: 24px; font-size: 18px; font-weight: 700; }
 .overlay > .backdrop { position: absolute; inset: 0; border: 0; background: transparent; }
 .sheet { position: absolute; left: 0; right: 0; bottom: 0; max-height: 92%; overflow-y: auto; padding: 22px 20px 24px; border-radius: 26px 26px 0 0; background: var(--s1); border-top: 1px solid var(--line); }
 .toast { position: absolute; left: 20px; right: 20px; bottom: 88px; padding: 14px 16px; border-radius: 16px; background: var(--text); color: var(--ink); font-size: 14px; font-weight: 600; line-height: 1.35; text-align: center; }
+.seg.wide { display: flex; }
+.seg.wide button { flex: 1; }
+.post-cta { width: 100%; margin-top: 16px; padding: 16px; border-radius: 18px; border: 1px dashed var(--accent); background: rgba(245,165,36,0.08); color: var(--text); display: flex; align-items: center; gap: 12px; text-align: left; }
+.post-cta .ic { width: 40px; height: 40px; border-radius: 20px; flex-shrink: 0; background: var(--accent); color: var(--ink); display: flex; align-items: center; justify-content: center; }
+.want { font-size: 18px; font-weight: 700; line-height: 1.25; }
+.want em { font-style: normal; color: var(--accent); }
+.toast.top { top: 76px; bottom: auto; } /* while a sheet is open, keep the toast off its buttons */
 </style>
 </head>
 <body>
 <div id="app" class="app"></div>
+<div id="live" class="sr-only" role="status" aria-live="polite"></div>
 
 <script>
 // ---------------------------------------------------------------
@@ -168,6 +193,39 @@ var REELS = [
   { id: 'v2', kind: 'venue', name: 'Velvet Room', line: 'Club · DJ booth', where: '2 mi away', caption: 'Late nights, dance floor, DJ booth with monitors.', bg: 'linear-gradient(160deg,#6B2C4A,#1C0E16 70%)' },
   { id: 'v3', kind: 'venue', name: 'Café Lune', line: 'Café · Acoustic corner', where: '38 mi away', caption: 'Weekend evenings, small crowd, good listening room.', bg: 'linear-gradient(160deg,#2C6B52,#0E1C16 70%)' }
 ];
+
+// "You" when using the Artist side. Shows up in a venue's applicant list after you apply.
+var ME = { id: 'me', name: 'Mara Voss', line: 'Singer · Jazz & soul', where: '12 mi away', bg: 'linear-gradient(135deg,#5B2A86,#2A1245)' };
+
+// Sample artists who already applied to a venue's gigs, keyed by gig id.
+var POOL = {
+  g1: [
+    { id: 'p1', name: 'June Harlow', line: 'Singer · Soul & R&B', where: '9 mi away', bg: 'linear-gradient(135deg,#0E6E7E,#0A1F2E)' },
+    { id: 'p2', name: 'Theo Brandt', line: 'Singer · Standards', where: '22 mi away', bg: 'linear-gradient(135deg,#9C3D2E,#2A0F14)' }
+  ]
+};
+
+// Sample musicians who reply when you post on the Musicians board, keyed by who you're looking for.
+// (No real accounts yet, so these stand in for other people so the review step can be tried.)
+var RESPONDERS = {
+  Band: [
+    { id: 'r1', name: 'The Loose Ends', line: 'Band · Indie rock', where: '9 mi away', bg: 'linear-gradient(135deg,#9C3D2E,#2A0F14)' },
+    { id: 'r2', name: 'Brass Tacks Trio', line: 'Band · Blues', where: '22 mi away', bg: 'linear-gradient(135deg,#2C3A6B,#10131F)' }
+  ],
+  Solo: [
+    { id: 'r3', name: 'Eli Park', line: 'Solo musician · Acoustic', where: '4 mi away', bg: 'linear-gradient(135deg,#7A5A12,#1A1408)' },
+    { id: 'r4', name: 'Nina Okafor', line: 'Solo musician · Folk guitar', where: '31 mi away', bg: 'linear-gradient(135deg,#2C6B52,#0E1C16)' }
+  ],
+  Singer: [
+    { id: 'r5', name: 'June Harlow', line: 'Singer · Soul & R&B', where: '9 mi away', bg: 'linear-gradient(135deg,#0E6E7E,#0A1F2E)' },
+    { id: 'r6', name: 'Rosa Vale', line: 'Singer · Country', where: '64 mi away', bg: 'linear-gradient(135deg,#6B2C4A,#1C0E16)' }
+  ],
+  DJ: [
+    { id: 'r7', name: 'DJ Kestrel', line: 'DJ · House', where: '55 mi away', bg: 'linear-gradient(135deg,#0E6E7E,#0A1F2E)' }
+  ]
+};
+
+var PURPOSES = ['Fill-in for a show', 'Opening act', 'Backing band', 'Join my act', 'Jam / session'];
 
 var SOCIALS = [
   { k: 'ig', label: 'Instagram' },
@@ -207,7 +265,7 @@ var state = {
   reelMode: 'artists',    // 'artists' | 'venues'
   filter: 'All',          // artist gig type filter
   range: 'Region',        // 'Town' | 'Region' | 'Statewide'
-  sheet: null,            // gig type being posted, or null
+  sheet: null,            // null | { kind: 'post', type: 'DJ' } | { kind: 'review', id: 'g1' }
   form: defaultForm(),
   gigs: [
     { id: 'g1', venue: 'The Corner Stage', type: 'Singer', when: 'Fri · 8 PM', pay: '$180', genre: 'Jazz', dist: '0.4 mi', mine: true, applicants: 0 },
@@ -219,17 +277,48 @@ var state = {
     { id: 'g7', venue: 'The Grain Elevator', type: 'Band', when: 'Sat · 9 PM', pay: '$450', genre: 'Country', dist: '38 mi · Hollis Creek', travel: 'Gas covered', mine: false, applicants: 0 },
     { id: 'g8', venue: 'Lakeside Lodge', type: 'Solo', when: 'Fri · 6 PM', pay: '$200', genre: 'Acoustic', dist: '64 mi · Pine Hollow', travel: 'Gas + room', mine: false, applicants: 0 },
     { id: 'g9', venue: 'Depot Taproom', type: 'DJ', when: 'Sat · 10 PM', pay: '$350', genre: 'House', dist: '112 mi · Dunmore', travel: 'Gas + room', mine: false, applicants: 0 },
-    { id: 'g10', venue: 'County Fair Stage', type: 'Band', when: 'Sun · 2 PM', pay: '$600', genre: 'Country', dist: '145 mi · Fairview', travel: 'Lodging included', mine: false, applicants: 0 }
+    { id: 'g10', venue: 'County Fair Stage', type: 'Band', when: 'Sun · 2 PM', pay: '$600', genre: 'Country', dist: '145 mi · Fairview', travel: 'Lodging included', mine: false, applicants: 0 },
+
+    // Musicians board: artists looking for other artists. type = who they want.
+    { id: 'c1', kind: 'collab', venue: 'The Loose Ends', byLine: 'Band · Indie rock', bg: 'linear-gradient(135deg,#9C3D2E,#2A0F14)', type: 'Singer', purpose: 'Fill-in for a show', when: 'Sat · 9 PM', pay: '$150', genre: 'Indie rock', dist: '9 mi', note: 'Our singer is out sick. Can you learn 8 covers by Saturday?' },
+    { id: 'c2', kind: 'collab', venue: 'Brass Tacks Trio', byLine: 'Band · Blues', bg: 'linear-gradient(135deg,#2C3A6B,#10131F)', type: 'Solo', purpose: 'Opening act', when: 'Fri · 7 PM', pay: '$100', genre: 'Blues', dist: '22 mi', note: '30-minute acoustic opener before our set at Brick & Barrel.' },
+    { id: 'c3', kind: 'collab', venue: 'Eli Park', byLine: 'Solo musician · Acoustic', bg: 'linear-gradient(135deg,#7A5A12,#1A1408)', type: 'Band', purpose: 'Backing band', when: 'Sun · 4 PM', pay: 'Split the door', genre: 'Acoustic', dist: '4 mi', note: 'Need bass and drums behind me for a patio show. Charts provided.' },
+    { id: 'c4', kind: 'collab', venue: 'Rosa Vale', byLine: 'Singer · Country', bg: 'linear-gradient(135deg,#6B2C4A,#1C0E16)', type: 'Band', purpose: 'Join my act', when: 'Ongoing', pay: 'Split the door', genre: 'Country', dist: '64 mi · Pine Hollow', note: 'Booking fair season. Looking for a steady band to tour the state with.' },
+    { id: 'c5', kind: 'collab', venue: 'DJ Kestrel', byLine: 'DJ · House', bg: 'linear-gradient(135deg,#0E6E7E,#0A1F2E)', type: 'Singer', purpose: 'Jam / session', when: 'Flexible', pay: 'Unpaid', genre: 'House', dist: '55 mi · Dunmore', note: 'Want a vocalist for a live house set. Let’s try a session first.' }
   ],
+  gigsView: 'venues',     // artist Gigs tab: 'venues' | 'musicians'
+  collabFilter: 'All',    // Musicians board: who the post is looking for
   applied: {},
   liked: {},
   invited: {},
   linked: { ig: true, yt: false, sp: true, sc: false },
+  bookings: {},           // gig id -> booked applicant id ('me' = you, the artist)
+  declined: {},           // 'gigId:applicantId' -> true
   toast: ''
 };
 
+// Keep the demo between refreshes (this browser only). "Reset demo data" on Profile clears it.
+var SAVE_KEY = 'stagecall-demo-v2';
+var SAVED = ['role', 'tab', 'reelMode', 'filter', 'range', 'gigsView', 'collabFilter', 'gigs', 'applied', 'liked', 'invited', 'linked', 'bookings', 'declined'];
+function save() {
+  try {
+    var out = {};
+    SAVED.forEach(function (k) { out[k] = state[k]; });
+    localStorage.setItem(SAVE_KEY, JSON.stringify(out));
+  } catch (e) { /* storage blocked: demo still works, just resets on refresh */ }
+}
+function load() {
+  try {
+    var s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+    if (s) SAVED.forEach(function (k) { if (s[k] !== undefined) state[k] = s[k]; });
+  } catch (e) { /* ignore */ }
+}
+
 function defaultForm() {
   return { date: 'Tonight', time: '9 PM', pay: '$200', genre: 'Any', reach: 'Region', travel: 'None' };
+}
+function defaultCollabForm() {
+  return { want: 'Band', purpose: 'Backing band', date: 'Sat', pay: 'Split the door', genre: 'Any', reach: 'Region' };
 }
 
 // ---------------------------------------------------------------
@@ -239,16 +328,39 @@ function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 function chip(label, on, attrs) {
-  return '<button class="chip' + (on ? ' on' : '') + '" ' + attrs + '>' + esc(label) + '</button>';
+  return '<button class="chip' + (on ? ' on' : '') + '" aria-pressed="' + !!on + '" ' + attrs + '>' + esc(label) + '</button>';
 }
 function formChips(key, options) {
   return options.map(function (o) {
     return chip(o, state.form[key] === o, 'data-act="form" data-key="' + key + '" data-val="' + esc(o) + '"');
   }).join('');
 }
+function findGig(id) { return state.gigs.filter(function (g) { return g.id === id; })[0]; }
+function initials(name) { return name.split(' ').map(function (w) { return w[0]; }).join('').slice(0, 2).toUpperCase(); }
+
+// Everyone who applied to a gig: sample applicants plus you, if you applied as the artist.
+function applicantsFor(g) {
+  if (g.kind === 'collab') return g.responders || [];
+  return (POOL[g.id] || []).concat(state.applied[g.id] ? [ME] : []);
+}
+function isCollab(g) { return g.kind === 'collab'; }
+function findApplicant(gigId, appId) {
+  return applicantsFor(findGig(gigId)).filter(function (a) { return a.id === appId; })[0];
+}
+// Where your own application stands: null | 'waiting' | 'booked' | 'passed'
+function myStatus(g) {
+  if (!state.applied[g.id]) return null;
+  var b = state.bookings[g.id];
+  if (b === 'me') return 'booked';
+  if (b || state.declined[g.id + ':me']) return 'passed';
+  return 'waiting';
+}
+
 var toastTimer = null;
 function showToast(msg) {
   state.toast = msg;
+  var live = document.getElementById('live');
+  if (live) live.textContent = msg;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(function () { state.toast = ''; render(); }, 2800);
 }
@@ -260,23 +372,34 @@ function headerView() {
   var v = state.role === 'venue';
   return '<div class="header">' +
     '<div class="brand"><div class="logo">' + icon(IC.logo, 18, 2.4) + '</div><div class="brand-name display">Stagecall</div></div>' +
-    '<div class="seg">' +
-      '<button class="' + (v ? 'on' : '') + '" data-act="role" data-val="venue">Venue</button>' +
-      '<button class="' + (!v ? 'on' : '') + '" data-act="role" data-val="artist">Artist</button>' +
+    '<div class="seg" role="group" aria-label="View the app as">' +
+      '<button class="' + (v ? 'on' : '') + '" aria-pressed="' + v + '" data-act="role" data-val="venue">Venue</button>' +
+      '<button class="' + (!v ? 'on' : '') + '" aria-pressed="' + !v + '" data-act="role" data-val="artist">Artist</button>' +
     '</div></div>';
 }
 
 function venueGigsView() {
-  var mine = state.gigs.filter(function (g) { return g.mine; });
+  var mine = state.gigs.filter(function (g) { return g.mine && !isCollab(g); });
   var list = mine.map(function (g) {
-    var n = g.applicants + (state.applied[g.id] ? 1 : 0);
-    var text = n === 0 ? 'No applicants yet' : (n === 1 ? '1 applied' : n + ' applied');
-    return '<div class="mine"><div style="min-width:0">' +
+    var apps = applicantsFor(g);
+    var booked = state.bookings[g.id];
+    var n = apps.length;
+    var badge, go;
+    if (booked) {
+      var who = findApplicant(g.id, booked);
+      badge = '<div class="badge booked">Booked</div>';
+      go = 'Booked: ' + esc(who ? who.name : 'artist') + ' →';
+    } else {
+      badge = '<div class="badge' + (n > 0 ? ' on' : '') + '">' + (n === 0 ? 'No applicants yet' : (n === 1 ? '1 applied' : n + ' applied')) + '</div>';
+      go = n > 0 ? 'Review applicants →' : 'View gig →';
+    }
+    return '<button class="mine" data-act="review" data-id="' + g.id + '"><div style="min-width:0">' +
       '<div style="font-size:17px;font-weight:700">' + esc(TYPE_LABEL[g.type]) + ' wanted</div>' +
       '<div style="margin-top:3px;font-size:14px;color:var(--mute)">' + esc(g.when) + ' · ' + esc(g.genre) + '</div>' +
       '<div style="margin-top:3px;font-size:14px;font-weight:600;color:var(--accent)">' + esc(g.pay) + '</div>' +
       '<div style="margin-top:3px;font-size:13px;color:var(--mute)">Open to ' + esc(g.reach || 'Region') + ' · ' + (g.travel ? 'Travel help: ' + esc(g.travel) : 'No travel help') + '</div>' +
-      '</div><div class="badge' + (n > 0 ? ' on' : '') + '">' + text + '</div></div>';
+      '<div class="go">' + go + '</div>' +
+      '</div>' + badge + '</button>';
   }).join('');
 
   function typeBtn(t, ic, sub) {
@@ -301,11 +424,30 @@ function venueGigsView() {
 
 function artistGigsView() {
   var maxMiles = RANGE_MILES[state.range];
+  if (state.gigsView === 'musicians') return musiciansView();
+  var mineOnly = state.filter === 'Mine';
   var shown = state.gigs.filter(function (g) {
+    if (isCollab(g)) return false;
+    if (mineOnly) return !!state.applied[g.id];
+    // a gig someone else already got is gone from browse, unless you applied to it
+    if (state.bookings[g.id] && !state.applied[g.id]) return false;
     return (state.filter === 'All' || g.type === state.filter) && parseFloat(g.dist) <= maxMiles;
   });
   var cards = shown.map(function (g) {
-    var on = !!state.applied[g.id];
+    var st = myStatus(g);
+    var statusTag = '', button;
+    if (st === 'booked') {
+      statusTag = '<div class="status ok">You’re booked. See you there!</div>';
+      button = '<button class="btn" disabled>Booked</button>';
+    } else if (st === 'passed') {
+      statusTag = '<div class="status no">Not selected this time</div>';
+      button = '<button class="btn" disabled>Spot filled</button>';
+    } else if (st === 'waiting') {
+      statusTag = '<div class="status wait">Applied · waiting on the venue</div>';
+      button = '<button class="btn ghost" data-act="apply" data-id="' + g.id + '">Withdraw application</button>';
+    } else {
+      button = '<button class="btn" data-act="apply" data-id="' + g.id + '" aria-label="Apply to ' + esc(g.venue) + ', ' + esc(g.when) + '">Apply</button>';
+    }
     return '<div class="card"><div style="display:flex;gap:14px">' +
       '<div class="thumb" style="background:' + THUMBS[state.gigs.indexOf(g) % THUMBS.length] + '">' + icon(IC.building, 30, 1.8) + '</div>' +
       '<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">' +
@@ -317,28 +459,119 @@ function artistGigsView() {
           '<span style="display:flex;align-items:center;gap:4px;color:var(--mute)">' + icon(IC.pin, 14) + esc(g.dist) + '</span>' +
         '</div></div></div>' +
       (g.travel ? '<div class="travel">Travel help: ' + esc(g.travel) + '</div>' : '') +
-      '<button class="btn' + (on ? ' ghost' : '') + '" data-act="apply" data-id="' + g.id + '">' + (on ? 'Applied. Tap to withdraw' : 'Apply') + '</button>' +
+      statusTag + button +
       '</div>';
   }).join('');
+  var nApplied = state.gigs.filter(function (g) { return state.applied[g.id] && !isCollab(g); }).length;
 
-  var ranges = [
+  var ranges = rangeChips();
+
+  var filters = ['All', 'DJ', 'Band', 'Solo', 'Singer'].map(function (k) {
+    return chip(k, state.filter === k, 'data-act="filter" data-val="' + k + '"');
+  }).join('') + chip('My applications (' + nApplied + ')', mineOnly, 'data-act="filter" data-val="Mine"');
+
+  var empty = mineOnly
+    ? 'You haven’t applied to anything yet. Tap All to browse gigs.'
+    : 'No gigs in this range yet. Try Region or Statewide to see more.';
+
+  return '<div class="scroll noscroll" style="padding:16px 0 28px" data-keep="artist-gigs">' +
+    gigsViewSwitch() +
+    '<div style="padding:0 20px;margin-top:20px"><h1 class="title display">Gigs in reach</h1>' +
+    '<p class="sub">Your town, your region, or anywhere in the state. Travel help shows on each gig.</p></div>' +
+    '<div class="label" id="lbl-range" style="margin-top:16px;padding:0 20px">HOW FAR WILL YOU GO?</div>' +
+    '<div class="row noscroll" role="group" aria-labelledby="lbl-range" style="margin-top:8px;padding:0 20px">' + ranges + '</div>' +
+    '<div class="row noscroll" role="group" aria-label="Filter gigs" style="margin-top:10px;padding:0 20px">' + filters + '</div>' +
+    '<div style="margin-top:16px;padding:0 20px;display:flex;flex-direction:column;gap:12px">' +
+      (shown.length === 0 ? '<p class="sub" style="padding:8px 0">' + empty + '</p>' : '') +
+      cards + '</div></div>';
+}
+
+function rangeChips() {
+  return [
     ['Town', 'My town · 15 mi'],
     ['Region', 'My region · 75 mi'],
     ['Statewide', 'Statewide']
   ].map(function (r) { return chip(r[1], state.range === r[0], 'data-act="range" data-val="' + r[0] + '"'); }).join('');
+}
 
-  var filters = ['All', 'DJ', 'Band', 'Solo', 'Singer'].map(function (k) {
-    return chip(k, state.filter === k, 'data-act="filter" data-val="' + k + '"');
+// Artist Gigs tab: switch between gigs from venues and posts from other musicians.
+function gigsViewSwitch() {
+  var v = state.gigsView === 'venues';
+  return '<div style="padding:0 20px"><div class="seg wide" role="group" aria-label="Show posts from">' +
+    '<button class="' + (v ? 'on' : '') + '" aria-pressed="' + v + '" data-act="gigsView" data-val="venues">Venue gigs</button>' +
+    '<button class="' + (!v ? 'on' : '') + '" aria-pressed="' + !v + '" data-act="gigsView" data-val="musicians">Musicians</button>' +
+  '</div></div>';
+}
+
+// How a Musicians-board post reads: "Looking for a singer"
+var WANT_LABEL = { DJ: 'DJ', Band: 'band', Solo: 'solo act', Singer: 'singer' };
+
+// Musicians board: bands looking for a singer or solo act, solo artists looking for a band, and so on.
+function musiciansView() {
+  var maxMiles = RANGE_MILES[state.range];
+  var others = state.gigs.filter(function (g) {
+    if (!isCollab(g) || g.mine) return false;
+    if (state.bookings[g.id] && !state.applied[g.id]) return false;
+    return (state.collabFilter === 'All' || g.type === state.collabFilter) && parseFloat(g.dist) <= maxMiles;
+  });
+  var mine = state.gigs.filter(function (g) { return isCollab(g) && g.mine; });
+
+  var myPosts = mine.map(function (g) {
+    var n = applicantsFor(g).length;
+    var booked = state.bookings[g.id];
+    var who = booked ? findApplicant(g.id, booked) : null;
+    return '<button class="mine" data-act="review" data-id="' + g.id + '"><div style="min-width:0">' +
+      '<div style="font-size:17px;font-weight:700">Looking for a ' + WANT_LABEL[g.type] + '</div>' +
+      '<div style="margin-top:3px;font-size:14px;color:var(--mute)">' + esc(g.purpose) + ' · ' + esc(g.when) + '</div>' +
+      '<div style="margin-top:3px;font-size:14px;font-weight:600;color:var(--accent)">' + esc(g.pay) + '</div>' +
+      '<div class="go">' + (who ? 'Teaming up with ' + esc(who.name) + ' →' : (n ? 'See who’s interested →' : 'View post →')) + '</div>' +
+      '</div>' + (who ? '<div class="badge booked">Teamed up</div>' : '<div class="badge' + (n ? ' on' : '') + '">' + (n === 0 ? 'No replies yet' : n + ' interested') + '</div>') + '</button>';
   }).join('');
 
-  return '<div class="scroll noscroll" style="padding:24px 0 28px" data-keep="artist-gigs">' +
-    '<div style="padding:0 20px"><h1 class="title display">Gigs in reach</h1>' +
-    '<p class="sub">Your town, your region, or anywhere in the state. Travel help shows on each gig.</p></div>' +
-    '<div class="label" style="margin-top:16px;padding:0 20px">HOW FAR WILL YOU GO?</div>' +
-    '<div class="row noscroll" style="margin-top:8px;padding:0 20px">' + ranges + '</div>' +
-    '<div class="row noscroll" style="margin-top:10px;padding:0 20px">' + filters + '</div>' +
+  var cards = others.map(function (g) {
+    var st = myStatus(g);
+    var statusTag = '', button;
+    if (st === 'booked') {
+      statusTag = '<div class="status ok">You’re teaming up!</div>';
+      button = '<button class="btn" disabled>Teamed up</button>';
+    } else if (st === 'passed') {
+      statusTag = '<div class="status no">They went with someone else</div>';
+      button = '<button class="btn" disabled>Spot filled</button>';
+    } else if (st === 'waiting') {
+      statusTag = '<div class="status wait">Interest sent · waiting to hear back</div>';
+      button = '<button class="btn ghost" data-act="apply" data-id="' + g.id + '">Take it back</button>';
+    } else {
+      button = '<button class="btn" data-act="apply" data-id="' + g.id + '" aria-label="I’m interested in ' + esc(g.venue) + '’s post">I’m interested</button>';
+    }
+    return '<div class="card">' +
+      '<div style="display:flex;align-items:center;gap:12px">' +
+        '<div class="initials" style="background:' + g.bg + '" aria-hidden="true">' + esc(initials(g.venue)) + '</div>' +
+        '<div style="min-width:0;flex:1"><div style="font-size:16px;font-weight:700">' + esc(g.venue) + '</div>' +
+        '<div style="font-size:13px;color:var(--mute)">' + esc(g.byLine) + '</div></div>' +
+        '<span style="display:flex;align-items:center;gap:4px;font-size:13px;color:var(--mute);flex-shrink:0">' + icon(IC.pin, 14) + esc(g.dist) + '</span>' +
+      '</div>' +
+      '<div class="want">Looking for a <em>' + WANT_LABEL[g.type] + '</em></div>' +
+      '<div style="font-size:14px;color:#D8D5E2;line-height:1.4">' + esc(g.note) + '</div>' +
+      '<div class="wrap"><span class="pill">' + esc(g.purpose) + '</span><span class="pill">' + esc(g.when) + '</span><span class="pill" style="color:var(--accent);font-weight:700">' + esc(g.pay) + '</span></div>' +
+      statusTag + button + '</div>';
+  }).join('');
+
+  var filters = [['All', 'All'], ['Band', 'Need a band'], ['Solo', 'Need a solo act'], ['Singer', 'Need a singer'], ['DJ', 'Need a DJ']]
+    .map(function (f) { return chip(f[1], state.collabFilter === f[0], 'data-act="collabFilter" data-val="' + f[0] + '"'); }).join('');
+
+  return '<div class="scroll noscroll" style="padding:16px 0 28px" data-keep="musicians">' +
+    gigsViewSwitch() +
+    '<div style="padding:0 20px;margin-top:20px"><h1 class="title display">Find musicians</h1>' +
+    '<p class="sub">Bands looking for a singer or solo act, and solo artists looking for a band. Team up for a show or for good.</p>' +
+    '<button class="post-cta" data-act="openCollab"><span class="ic">' + icon(IC.plus, 22, 2.4) + '</span>' +
+      '<span><b style="display:block;font-size:16px">Post what you’re looking for</b><small style="display:block;margin-top:2px;font-size:13px;color:var(--mute)">A band, a singer, a solo act, or a DJ</small></span></button>' +
+    (mine.length ? '<h2 class="section">Your posts</h2><div style="margin-top:12px;display:flex;flex-direction:column;gap:10px">' + myPosts + '</div>' : '') +
+    '</div>' +
+    '<div class="label" id="lbl-mrange" style="margin-top:24px;padding:0 20px">HOW FAR WILL YOU GO?</div>' +
+    '<div class="row noscroll" role="group" aria-labelledby="lbl-mrange" style="margin-top:8px;padding:0 20px">' + rangeChips() + '</div>' +
+    '<div class="row noscroll" role="group" aria-label="Filter posts" style="margin-top:10px;padding:0 20px">' + filters + '</div>' +
     '<div style="margin-top:16px;padding:0 20px;display:flex;flex-direction:column;gap:12px">' +
-      (shown.length === 0 ? '<p class="sub" style="padding:8px 0">No gigs in this range yet. Try Region or Statewide to see more.</p>' : '') +
+      (others.length === 0 ? '<p class="sub" style="padding:8px 0">No posts like that in range. Try a wider range or another filter.</p>' : '') +
       cards + '</div></div>';
 }
 
@@ -365,15 +598,15 @@ function reelsView() {
         '<div style="font-size:14px;line-height:1.4;color:rgba(255,255,255,0.85)">' + esc(r.caption) + '</div>' +
         '<button class="reel-cta' + (done ? ' done' : '') + '" data-act="cta" data-id="' + r.id + '">' + (done ? after : base) + '</button>' +
       '</div>' +
-      '<button class="heart' + (liked ? ' on' : '') + '" aria-label="Like" data-act="like" data-id="' + r.id + '">' + heart(liked) + '</button>' +
+      '<button class="heart' + (liked ? ' on' : '') + '" aria-label="Like ' + esc(r.name) + '" aria-pressed="' + liked + '" data-act="like" data-id="' + r.id + '">' + heart(liked) + '</button>' +
       '</div>';
   }).join('');
 
   return '<div style="position:absolute;inset:0">' +
     '<div class="reels noscroll" data-keep="reels">' + cards + '</div>' +
-    '<div class="reel-mode"><div class="seg">' +
-      '<button class="' + (state.reelMode === 'artists' ? 'on' : '') + '" data-act="mode" data-val="artists">Artists</button>' +
-      '<button class="' + (state.reelMode === 'venues' ? 'on' : '') + '" data-act="mode" data-val="venues">Venues</button>' +
+    '<div class="reel-mode"><div class="seg" role="group" aria-label="Show reels from">' +
+      '<button class="' + (state.reelMode === 'artists' ? 'on' : '') + '" aria-pressed="' + (state.reelMode === 'artists') + '" data-act="mode" data-val="artists">Artists</button>' +
+      '<button class="' + (state.reelMode === 'venues' ? 'on' : '') + '" aria-pressed="' + (state.reelMode === 'venues') + '" data-act="mode" data-val="venues">Venues</button>' +
     '</div></div></div>';
 }
 
@@ -403,7 +636,7 @@ function artistProfileView() {
           '<div style="font-size:13px;color:var(--mute)">Audio</div></div>' +
         '<button class="dashed" style="min-height:64px">+ Add video</button>' +
         '<button class="dashed" style="min-height:64px">+ Add audio</button>' +
-      '</div></div></div>';
+      '</div>' + resetLink() + '</div></div>';
 }
 
 function venueProfileView() {
@@ -429,29 +662,128 @@ function venueProfileView() {
       '<div class="wrap" style="margin-top:12px"><span class="pill">Stage</span><span class="pill">PA system</span><span class="pill">Backline</span><span class="pill">DJ booth</span></div>' +
       '<h2 class="section">What we book</h2>' +
       '<div class="wrap" style="margin-top:12px"><span class="pill solid">DJ</span><span class="pill solid">Band</span><span class="pill solid">Solo musician</span><span class="pill solid">Singer</span></div>' +
+      resetLink() +
     '</div></div>';
+}
+
+function resetLink() {
+  return '<div style="margin-top:28px;text-align:center"><button class="link" data-act="reset">Reset demo data</button></div>';
 }
 
 function sheetView() {
   if (!state.sheet) return '';
+  var k = state.sheet.kind;
+  var body = k === 'review' ? reviewSheet(findGig(state.sheet.id)) : (k === 'collab' ? collabSheet() : postSheet(state.sheet.type));
   return '<div class="overlay">' +
-    '<button class="backdrop" aria-label="Close" data-act="closeSheet"></button>' +
-    '<div class="sheet noscroll" data-keep="sheet">' +
-      '<h2 class="display" style="font-size:24px;font-weight:700;letter-spacing:-0.5px">Post a ' + TYPE_LABEL[state.sheet] + ' gig</h2>' +
-      '<p style="margin-top:4px;font-size:14px;color:var(--mute)">Choose how far to reach and whether you can help with travel.</p>' +
-      '<div class="label" style="margin-top:18px">DATE</div><div class="row noscroll" style="margin-top:8px">' + formChips('date', ['Tonight', 'Tomorrow', 'Fri', 'Sat', 'Sun']) + '</div>' +
-      '<div class="label" style="margin-top:16px">START TIME</div><div class="row noscroll" style="margin-top:8px">' + formChips('time', ['7 PM', '8 PM', '9 PM', '10 PM']) + '</div>' +
-      '<div class="label" style="margin-top:16px">PAY</div><div class="row noscroll" style="margin-top:8px">' + formChips('pay', ['$100', '$150', '$200', '$300', '$500']) + '</div>' +
-      '<div class="label" style="margin-top:16px">STYLE</div><div class="row noscroll" style="margin-top:8px">' + formChips('genre', ['Any', 'Rock', 'Country', 'Jazz', 'House', 'Acoustic', 'Blues']) + '</div>' +
-      '<div class="label" style="margin-top:16px">DRAW ARTISTS FROM</div><div class="row noscroll" style="margin-top:8px">' + formChips('reach', ['Town', 'Region', 'Statewide']) + '</div>' +
-      '<div class="label" style="margin-top:16px">TRAVEL HELP</div><div class="row noscroll" style="margin-top:8px">' + formChips('travel', ['None', 'Gas', 'Gas + room']) + '</div>' +
-      '<button class="btn" style="margin-top:22px;min-height:52px;border-radius:26px;font-size:17px" data-act="post">Post gig</button>' +
-      '<button style="margin-top:8px;width:100%;min-height:48px;border-radius:24px;border:0;background:transparent;color:var(--mute);font-size:15px;font-weight:600" data-act="closeSheet">Cancel</button>' +
-    '</div></div>';
+    '<button class="backdrop" aria-label="Close" tabindex="-1" data-act="closeSheet"></button>' +
+    '<div class="sheet noscroll" role="dialog" aria-modal="true" aria-labelledby="sheet-title" data-keep="sheet">' + body + '</div></div>';
+}
+
+function cancelBtn(label) {
+  return '<button style="margin-top:8px;width:100%;min-height:48px;border-radius:24px;border:0;background:transparent;color:var(--mute);font-size:15px;font-weight:600" data-act="closeSheet">' + label + '</button>';
+}
+
+function field(key, label, options, first) {
+  return '<div class="label" id="lbl-' + key + '" style="margin-top:' + (first ? 18 : 16) + 'px">' + label + '</div>' +
+    '<div class="row noscroll" role="group" aria-labelledby="lbl-' + key + '" style="margin-top:8px">' + formChips(key, options) + '</div>';
+}
+
+function postSheet(type) {
+  var f = state.form;
+  return '<h2 id="sheet-title" tabindex="-1" class="display" style="font-size:24px;font-weight:700;letter-spacing:-0.5px">Post a ' + TYPE_LABEL[type] + ' gig</h2>' +
+    '<p style="margin-top:4px;font-size:14px;color:var(--mute)">Choose how far to reach and whether you can help with travel.</p>' +
+    field('date', 'DATE', ['Tonight', 'Tomorrow', 'Fri', 'Sat', 'Sun'], true) +
+    field('time', 'START TIME', ['7 PM', '8 PM', '9 PM', '10 PM']) +
+    field('pay', 'PAY', ['$100', '$150', '$200', '$300', '$500']) +
+    field('genre', 'STYLE', ['Any', 'Rock', 'Country', 'Jazz', 'House', 'Acoustic', 'Blues']) +
+    field('reach', 'DRAW ARTISTS FROM', ['Town', 'Region', 'Statewide']) +
+    field('travel', 'TRAVEL HELP', ['None', 'Gas', 'Gas + room']) +
+    // live summary so the venue sees exactly what artists will see before posting
+    '<div class="card" style="margin-top:20px;gap:4px;background:var(--s2)">' +
+      '<div class="label">PREVIEW</div>' +
+      '<div style="font-size:16px;font-weight:700">' + esc(TYPE_LABEL[type]) + ' · ' + esc(f.genre === 'Any' ? 'Any style' : f.genre) + '</div>' +
+      '<div style="font-size:14px">' + esc(f.date) + ' · ' + esc(f.time) + ' · <b style="color:var(--accent)">' + esc(f.pay) + '</b></div>' +
+      '<div style="font-size:13px;color:var(--mute)">Open to ' + esc(f.reach) + ' · ' + (f.travel === 'None' ? 'No travel help' : 'Travel help: ' + esc(f.travel)) + '</div>' +
+    '</div>' +
+    '<button class="btn" style="margin-top:18px;min-height:52px;border-radius:26px;font-size:17px" data-act="post">Post gig</button>' +
+    cancelBtn('Cancel');
+}
+
+// Musicians board: post what kind of musician you're looking for.
+function collabSheet() {
+  var f = state.form;
+  var wantChips = ['Band', 'Solo', 'Singer', 'DJ'].map(function (t) {
+    return chip(TYPE_LABEL[t], f.want === t, 'data-act="form" data-key="want" data-val="' + t + '"');
+  }).join('');
+  return '<h2 id="sheet-title" tabindex="-1" class="display" style="font-size:24px;font-weight:700;letter-spacing:-0.5px">Find a musician</h2>' +
+    '<p style="margin-top:4px;font-size:14px;color:var(--mute)">Need a singer for your band, or a band behind your solo set? Post it here.</p>' +
+    '<div class="label" id="lbl-want" style="margin-top:18px">I’M LOOKING FOR</div>' +
+    '<div class="row noscroll" role="group" aria-labelledby="lbl-want" style="margin-top:8px">' + wantChips + '</div>' +
+    field('purpose', 'FOR', PURPOSES) +
+    field('date', 'WHEN', ['Fri', 'Sat', 'Sun', 'Flexible', 'Ongoing']) +
+    field('pay', 'PAY', ['Split the door', '$100', '$150', '$200', 'Unpaid']) +
+    field('genre', 'STYLE', ['Any', 'Rock', 'Country', 'Jazz', 'House', 'Acoustic', 'Blues']) +
+    field('reach', 'REACH MUSICIANS IN', ['Town', 'Region', 'Statewide']) +
+    '<div class="card" style="margin-top:20px;gap:4px;background:var(--s2)">' +
+      '<div class="label">PREVIEW</div>' +
+      '<div class="want">Looking for a <em>' + WANT_LABEL[f.want] + '</em></div>' +
+      '<div style="font-size:14px">' + esc(f.purpose) + ' · ' + esc(f.date) + ' · <b style="color:var(--accent)">' + esc(f.pay) + '</b></div>' +
+      '<div style="font-size:13px;color:var(--mute)">' + esc(f.genre === 'Any' ? 'Any style' : f.genre) + ' · Open to ' + esc(f.reach) + '</div>' +
+    '</div>' +
+    '<button class="btn" style="margin-top:18px;min-height:52px;border-radius:26px;font-size:17px" data-act="postCollab">Post</button>' +
+    cancelBtn('Cancel');
+}
+
+function reviewSheet(g) {
+  if (!g) return cancelBtn('Close');
+  var c = isCollab(g);
+  var W = c
+    ? { book: 'Team up', booked: 'Teamed up', decline: 'Pass', declined: 'Passed', notSel: 'Not this time', count: ' INTERESTED', countOne: ' INTERESTED', undo: 'Undo team-up' }
+    : { book: 'Book', booked: 'Booked', decline: 'Decline', declined: 'Declined', notSel: 'Not selected', count: ' APPLICANTS', countOne: ' APPLICANT', undo: 'Undo booking' };
+  var apps = applicantsFor(g);
+  var booked = state.bookings[g.id];
+  var bookedWho = booked ? findApplicant(g.id, booked) : null;
+
+  var rows = apps.map(function (a) {
+    var key = g.id + ':' + a.id;
+    var actions;
+    if (booked === a.id) actions = '<div class="status ok">' + W.booked + '</div>';
+    else if (state.declined[key]) actions = '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div class="status no">' + W.declined + '</div>' +
+      (booked ? '' : '<button class="link" data-act="undecline" data-id="' + g.id + '" data-val="' + a.id + '">Undo</button>') + '</div>';
+    else if (booked) actions = '<div class="status no">' + W.notSel + '</div>';
+    else actions = '<div style="display:flex;gap:8px">' +
+      '<button class="btn ghost sm" data-act="decline" data-id="' + g.id + '" data-val="' + a.id + '" aria-label="' + W.decline + ' ' + esc(a.name) + '">' + W.decline + '</button>' +
+      '<button class="btn sm" data-act="book" data-id="' + g.id + '" data-val="' + a.id + '" aria-label="' + W.book + ' with ' + esc(a.name) + '">' + W.book + '</button></div>';
+    return '<div class="person"><div style="display:flex;align-items:center;gap:12px">' +
+      '<div class="initials" style="background:' + a.bg + '" aria-hidden="true">' + esc(initials(a.name)) + '</div>' +
+      '<div style="min-width:0"><div style="font-size:16px;font-weight:700">' + esc(a.name) + (a.id === 'me' ? ' <span style="font-size:12px;font-weight:600;color:var(--mute)">(you, from the Artist side)</span>' : '') + '</div>' +
+      '<div style="font-size:14px;color:var(--mute)">' + esc(a.line) + ' · ' + esc(a.where) + '</div></div></div>' +
+      actions + '</div>';
+  }).join('');
+
+  var title = c ? 'Looking for a ' + WANT_LABEL[g.type] : esc(TYPE_LABEL[g.type]) + ' wanted';
+  var meta = c ? esc(g.purpose) + ' · ' + esc(g.when) : esc(g.when) + ' · ' + esc(g.genre);
+  var banner = !bookedWho ? '' : c
+    ? 'You’re teaming up with ' + esc(bookedWho.name) + '. Everyone else will see the spot is filled.'
+    : esc(bookedWho.name) + ' is booked for this gig. The other applicants will see the spot is filled.';
+  var empty = c
+    ? 'No replies yet. Musicians in range will see your post on the Musicians board.'
+    : 'No one has applied yet. To try it, switch to <b>Artist</b> at the top and apply to this gig.';
+
+  return '<h2 id="sheet-title" tabindex="-1" class="display" style="font-size:24px;font-weight:700;letter-spacing:-0.5px">' + title + '</h2>' +
+    '<p style="margin-top:4px;font-size:14px;color:var(--mute)">' + meta + ' · <b style="color:var(--accent)">' + esc(g.pay) + '</b></p>' +
+    (banner ? '<div class="banner">' + banner + '</div>' : '') +
+    '<h3 class="label" style="margin:20px 0 0">' + apps.length + (apps.length === 1 ? W.countOne : W.count) + '</h3>' +
+    (apps.length === 0
+      ? '<p class="sub" style="font-size:14px;margin-top:10px">' + empty + '</p>'
+      : '<div style="margin-top:10px;display:flex;flex-direction:column;gap:10px">' + rows + '</div>') +
+    (booked ? '<button class="btn ghost" style="margin-top:18px" data-act="unbook" data-id="' + g.id + '">' + W.undo + '</button>' : '') +
+    cancelBtn('Done');
 }
 
 function tabView(key, label, ic) {
-  return '<button class="tab' + (state.tab === key ? ' on' : '') + '" data-act="tab" data-val="' + key + '">' + icon(ic, 24) + label + '</button>';
+  var on = state.tab === key;
+  return '<button class="tab' + (on ? ' on' : '') + '"' + (on ? ' aria-current="page"' : '') + ' data-act="tab" data-val="' + key + '">' + icon(ic, 24) + label + '</button>';
 }
 
 function view() {
@@ -461,11 +793,13 @@ function view() {
   else if (state.tab === 'reels') screen = reelsView();
   else screen = isVenue ? venueProfileView() : artistProfileView();
 
-  return headerView() +
-    '<div class="content">' + screen + '</div>' +
-    '<div class="tabbar">' + tabView('gigs', 'Gigs', IC.tabGigs) + tabView('reels', 'Reels', IC.tabReels) + tabView('profile', 'Profile', IC.tabProfile) + '</div>' +
+  // while a sheet is open, everything behind it is inert (no clicks, no keyboard focus)
+  var inert = state.sheet ? ' inert' : '';
+  return '<div' + inert + ' style="display:contents">' + headerView() + '</div>' +
+    '<main class="content"' + inert + '>' + screen + '</main>' +
+    '<nav class="tabbar" aria-label="Main"' + inert + '>' + tabView('gigs', 'Gigs', IC.tabGigs) + tabView('reels', 'Reels', IC.tabReels) + tabView('profile', 'Profile', IC.tabProfile) + '</nav>' +
     sheetView() +
-    (state.toast ? '<div class="toast">' + esc(state.toast) + '</div>' : '');
+    (state.toast ? '<div class="toast' + (state.sheet ? ' top' : '') + '" aria-hidden="true">' + esc(state.toast) + '</div>' : '');
 }
 
 // ---------------------------------------------------------------
@@ -473,34 +807,109 @@ function view() {
 // ---------------------------------------------------------------
 var root = document.getElementById('app');
 
+// A button's identity, so keyboard focus can be put back on "the same" button after a re-render.
+function sig(el) {
+  if (!el || !el.dataset || !el.dataset.act) return null;
+  return [el.dataset.act, el.dataset.val || '', el.dataset.id || '', el.dataset.key || ''].join('|');
+}
+function bySig(s) {
+  if (!s) return null;
+  var all = root.querySelectorAll('[data-act]');
+  for (var i = 0; i < all.length; i++) if (sig(all[i]) === s) return all[i];
+  return null;
+}
+var focusNext = null;   // 'sheet' to focus the sheet title, or a button signature
+
 function render() {
   // remember scroll positions so lists don't jump when something changes
   var keep = {};
   root.querySelectorAll('[data-keep]').forEach(function (el) { keep[el.dataset.keep] = el.scrollTop; });
+  var had = root.contains(document.activeElement) ? sig(document.activeElement) : null;
   root.innerHTML = view();
   root.querySelectorAll('[data-keep]').forEach(function (el) {
     if (keep[el.dataset.keep] != null) el.scrollTop = keep[el.dataset.keep];
   });
+  // put keyboard focus back where it belongs
+  var target = focusNext === 'sheet' ? document.getElementById('sheet-title') : bySig(focusNext || had);
+  if (!target && focusNext && focusNext !== 'sheet') target = bySig(had);
+  if (!target && state.sheet && had) target = document.getElementById('sheet-title');
+  if (target) target.focus({ preventScroll: true });
+  focusNext = null;
+  save();
+}
+
+var sheetOpener = null;  // the button that opened the sheet, to return focus on close
+function openSheet(sheet, el) {
+  state.sheet = sheet;
+  sheetOpener = sig(el);
+  focusNext = 'sheet';
+}
+function closeSheet() {
+  state.sheet = null;
+  focusNext = sheetOpener;
 }
 
 function act(name, el) {
   var val = el.dataset.val;
   var id = el.dataset.id;
   switch (name) {
-    case 'role': state.role = val; break;
+    case 'role': state.role = val; if (state.filter === 'Mine' && val === 'venue') state.filter = 'All'; break;
     case 'tab': state.tab = val; break;
     case 'mode': state.reelMode = val; break;
     case 'filter': state.filter = val; break;
     case 'range': state.range = val; break;
-    case 'openSheet': state.sheet = val; state.form = defaultForm(); break;
-    case 'closeSheet': state.sheet = null; break;
+    case 'gigsView': state.gigsView = val; break;
+    case 'collabFilter': state.collabFilter = val; break;
+    case 'openSheet': state.form = defaultForm(); openSheet({ kind: 'post', type: val }, el); break;
+    case 'openCollab': state.form = defaultCollabForm(); openSheet({ kind: 'collab' }, el); break;
+    case 'postCollab': {
+      var cf = state.form;
+      var cid = 'c' + Date.now();
+      // Sample replies so the review step can be tried; real replies would come from other accounts.
+      var replies = (RESPONDERS[cf.want] || []).map(function (r) { return Object.assign({}, r); });
+      state.gigs.push({
+        id: cid, kind: 'collab', mine: true,
+        venue: ME.name, byLine: ME.line, bg: ME.bg,
+        type: cf.want, purpose: cf.purpose, when: cf.date, pay: cf.pay,
+        genre: cf.genre, reach: cf.reach, dist: '0 mi', note: '',
+        responders: replies
+      });
+      closeSheet();
+      focusNext = 'review||' + cid + '|';
+      showToast('Posted. ' + (replies.length === 1 ? '1 musician is' : replies.length + ' musicians are') + ' interested (sample replies).');
+      break;
+    }
+    case 'review': openSheet({ kind: 'review', id: id }, el); break;
+    case 'closeSheet': closeSheet(); break;
     case 'form': state.form[el.dataset.key] = val; break;
+    case 'book': {
+      var who = findApplicant(id, val);
+      state.bookings[id] = val;
+      var name = who ? who.name : 'the artist';
+      if (isCollab(findGig(id))) showToast('Teaming up with ' + name + '.');
+      else showToast('Booked ' + name + '.' + (val === 'me' ? ' Switch to Artist to see it.' : ''));
+      focusNext = 'unbook||' + id + '|';
+      break;
+    }
+    case 'unbook': {
+      var prev = state.bookings[id];
+      delete state.bookings[id];
+      focusNext = 'book|' + prev + '|' + id + '|';
+      break;
+    }
+    case 'decline': state.declined[id + ':' + val] = true; focusNext = 'undecline|' + val + '|' + id + '|'; break;
+    case 'undecline': delete state.declined[id + ':' + val]; focusNext = 'decline|' + val + '|' + id + '|'; break;
+    case 'reset':
+      try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ }
+      location.reload();
+      return;
     case 'post': {
       var f = state.form;
+      var newId = 'n' + Date.now();
       state.gigs.unshift({
-        id: 'n' + Date.now(),
+        id: newId,
         venue: 'The Corner Stage',
-        type: state.sheet,
+        type: state.sheet.type,
         when: f.date + ' · ' + f.time,
         pay: f.pay,
         genre: f.genre,
@@ -510,15 +919,25 @@ function act(name, el) {
         mine: true,
         applicants: 0
       });
-      state.sheet = null;
+      closeSheet();
+      focusNext = 'review||' + newId + '|';
       showToast('Gig posted. Switch to Artist to see how it looks.');
       break;
     }
     case 'apply': {
-      var gig = state.gigs.filter(function (g) { return g.id === id; })[0];
-      var was = !!state.applied[id];
-      state.applied[id] = !was;
-      if (!was && gig) showToast('Applied to ' + gig.venue + '.');
+      var gig = findGig(id);
+      if (state.applied[id]) {
+        delete state.applied[id];
+        delete state.declined[id + ':me'];
+        showToast(gig && isCollab(gig) ? 'Interest taken back.' : 'Application withdrawn.');
+      } else if (gig && isCollab(gig)) {
+        state.applied[id] = true;
+        showToast('Sent ' + gig.venue + ' your profile. They’ll see you’re interested.');
+      } else {
+        state.applied[id] = true;
+        // gigs "you" posted as the venue can be reviewed on the Venue side
+        if (gig) showToast('Applied to ' + gig.venue + '.' + (gig.mine ? ' Switch to Venue to review it.' : ''));
+      }
       break;
     }
     case 'like': state.liked[id] = !state.liked[id]; break;
@@ -542,6 +961,12 @@ root.addEventListener('click', function (e) {
   act(el.dataset.act, el);
 });
 
+// Escape closes an open sheet
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape' && state.sheet) { closeSheet(); render(); }
+});
+
+load();
 render();
 </script>
 </body>
