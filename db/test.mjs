@@ -65,6 +65,18 @@ check('10 venues, 4 artists, 10 gigs, 7 reels', counts.v === 10 && counts.a === 
 const roles = (await db.query(`select role::text from profiles where id = $1`, [CORNER])).rows[0].role;
 check('profile role comes from sign-up metadata', roles === 'venue', roles);
 
+// --- Lock-down (Supabase security advisor) ---
+const definerInPublic = (await db.query(`select count(*)::int n from pg_proc p join pg_namespace s on s.oid = p.pronamespace
+  where s.nspname = 'public' and p.prosecdef`)).rows[0].n;
+check('no security definer functions in the public (API) schema', definerInPublic === 0, `n=${definerInPublic}`);
+const trig = (await db.query(`select
+  has_function_privilege('anon', 'private.handle_new_user()', 'execute') a,
+  has_function_privilege('authenticated', 'private.check_application_update()', 'execute') b`)).rows[0];
+check('nobody can call the trigger functions by hand', !trig.a && !trig.b, JSON.stringify(trig));
+const unpinned = (await db.query(`select string_agg(p.proname, ', ') names from pg_proc p join pg_namespace s on s.oid = p.pronamespace
+  where s.nspname in ('public', 'private') and p.prokind = 'f' and p.proconfig is null`)).rows[0].names;
+check('every function has a fixed search_path', unpinned === null, unpinned || '');
+
 // --- Distance filters: same counts the prototype shows for Mara ---
 const reach = async (artist, range, act = null) =>
   (await db.query(`select * from gigs_in_reach($1, $2, $3)`, [artist, range, act])).rows;

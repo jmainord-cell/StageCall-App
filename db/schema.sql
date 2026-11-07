@@ -206,7 +206,7 @@ create index messages_conversation_idx on messages (conversation_id, created_at)
 
 -- Same numbers as RANGE_MILES in index.html. null = no limit (Statewide).
 create function reach_miles(r reach_level) returns double precision
-language sql immutable as $$
+language sql immutable set search_path = '' as $$
   select case r when 'Town' then 15 when 'Region' then 75 else null end::double precision
 $$;
 
@@ -214,7 +214,7 @@ $$;
 create function miles_between(lat1 double precision, lng1 double precision,
                               lat2 double precision, lng2 double precision)
 returns double precision
-language sql immutable as $$
+language sql immutable set search_path = '' as $$
   select 2 * 3958.8 * asin(sqrt(
     power(sin(radians(lat2 - lat1) / 2), 2) +
     cos(radians(lat1)) * cos(radians(lat2)) * power(sin(radians(lng2 - lng1) / 2), 2)
@@ -242,7 +242,7 @@ create function gigs_in_reach(p_artist_id uuid,
 returns table (gig_id uuid, venue_name text, venue_town text, act_type act_type,
                starts_at timestamptz, pay_cents integer, genre text,
                travel travel_help, miles double precision)
-language sql stable security invoker as $$
+language sql stable security invoker set search_path = public as $$
   select c.id, c.venue_name, c.venue_town, c.act_type, c.starts_at, c.pay_cents,
          c.genre, c.travel, d.miles
   from gig_cards c
