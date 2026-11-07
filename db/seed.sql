@@ -1,15 +1,26 @@
 -- ---------------------------------------------------------------
--- Stagecall sample data: the same gigs, venues, artists and reels the
--- prototype shows in index.html. All names and places are fictional.
+-- Stagecall sample data: the same gigs, venues, artists, live shows and
+-- reels the prototype shows in index.html. The places are real Arkansas
+-- towns (home is Fayetteville, the same HOME as index.html); the venue
+-- and artist names are fictional.
 --
--- Locations are laid out around a made-up home point (38.0, -92.0) so the
--- distances roughly match the prototype (1 degree of latitude ~ 69.09 mi).
--- Gig dates are relative to the day you load this file.
+-- Gig dates are relative to the day you load this file, on Arkansas
+-- time: "Fri" means the next Friday after today, "Tonight" means today.
 --
 -- Sample accounts have no password and cannot sign in. They exist only to
 -- own the sample rows. Run after schema.sql and policies.sql; the sign-up
 -- trigger creates each profile from its metadata.
 -- ---------------------------------------------------------------
+
+-- Next given weekday (1 = Mon ... 7 = Sun) strictly after today, Arkansas time.
+-- pg_temp: exists only while this file runs.
+create function pg_temp.next_day(p_isodow int) returns date
+language sql stable as $$
+  select (now() at time zone 'America/Chicago')::date
+       + ((p_isodow - extract(isodow from (now() at time zone 'America/Chicago'))::int + 6) % 7 + 1)
+$$;
+create function pg_temp.at_local(p_day date, p_time time) returns timestamptz
+language sql stable as $$ select (p_day + p_time) at time zone 'America/Chicago' $$;
 
 insert into auth.users (id, email, raw_user_meta_data) values
   ('00000000-0000-0000-0000-000000000001', 'corner-stage@example.com',  '{"role":"venue","display_name":"The Corner Stage"}'),
@@ -18,61 +29,81 @@ insert into auth.users (id, email, raw_user_meta_data) values
   ('00000000-0000-0000-0000-000000000012', 'sample-artists@example.com','{"role":"artist","display_name":"Sample artists"}');
 
 -- ---------------------------------------------------------------
--- Venues (north of home; miles / 69.09 = degrees of latitude)
+-- Venues (miles are from home in Fayetteville, 36.0626, -94.1574)
 -- ---------------------------------------------------------------
 insert into venues (id, owner_id, name, kind, about, equipment, books, town, state, lat, lng) values
   ('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 'The Corner Stage', 'Live room & bar',
-     'The vibe, the crowd, what nights you book.', '{Stage,"PA system",Backline,"DJ booth"}', '{DJ,Band,Solo,Singer}', 'Home', 'MO', 38 + 0.4/69.09, -92),
+     'The vibe, the crowd, what nights you book.', '{Stage,"PA system",Backline,"DJ booth"}', '{DJ,Band,Solo,Singer}', 'Fayetteville', 'AR', 36.0660, -94.1608),   -- 0.3 mi
   ('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000002', 'The Rusty Anchor', 'Bar with a small stage',
-     'Stage and PA provided. Bands Thursday to Saturday.', '{Stage,"PA system"}', '{Band}', 'Home', 'MO', 38 + 1.2/69.09, -92),
+     'Stage and PA provided. Bands Thursday to Saturday.', '{Stage,"PA system"}', '{Band}', 'Fayetteville', 'AR', 36.0768, -94.1612),                                -- 1.0 mi
   ('10000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000002', 'Velvet Room', 'Club · DJ booth',
-     'Late nights, dance floor, DJ booth with monitors.', '{"DJ booth"}', '{DJ}', 'Home', 'MO', 38 + 2.4/69.09, -92),
+     'Late nights, dance floor, DJ booth with monitors.', '{"DJ booth"}', '{DJ}', 'Fayetteville', 'AR', 36.0905, -94.1690),                                          -- 2.0 mi
   ('10000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000002', 'Café Lune', 'Café · Acoustic corner',
-     'Weekend evenings, small crowd, good listening room.', '{}', '{Solo,Singer}', 'Home', 'MO', 38 + 0.8/69.09, -92),
+     'Weekend evenings, small crowd, good listening room.', '{}', '{Solo,Singer}', 'Fayetteville', 'AR', 36.0545, -94.1702),                                         -- 0.9 mi
   ('10000000-0000-0000-0000-000000000005', '00000000-0000-0000-0000-000000000002', 'Harbor House', 'Restaurant',
-     null, '{"PA system"}', '{Singer}', 'Home', 'MO', 38 + 3.1/69.09, -92),
+     null, '{"PA system"}', '{Singer}', 'Springdale', 'AR', 36.1867, -94.1288),                                                                                      -- 8.7 mi
   ('10000000-0000-0000-0000-000000000006', '00000000-0000-0000-0000-000000000002', 'Brick & Barrel', 'Bar',
-     null, '{Stage}', '{Band}', 'Home', 'MO', 38 + 1.9/69.09, -92),
+     null, '{Stage}', '{Band}', 'Fayetteville', 'AR', 36.0398, -94.1405),                                                                                            -- 1.8 mi
   ('10000000-0000-0000-0000-000000000007', '00000000-0000-0000-0000-000000000002', 'The Grain Elevator', 'Event hall',
-     null, '{Stage,"PA system"}', '{Band}', 'Hollis Creek', 'MO', 38 + 38/69.09, -92),
+     null, '{Stage,"PA system"}', '{Band}', 'Eureka Springs', 'AR', 36.4012, -93.7379),                                                                              -- 33 mi
   ('10000000-0000-0000-0000-000000000008', '00000000-0000-0000-0000-000000000002', 'Lakeside Lodge', 'Lodge',
-     null, '{}', '{Solo}', 'Pine Hollow', 'MO', 38 + 64/69.09, -92),
+     null, '{}', '{Solo}', 'Harrison', 'AR', 36.2298, -93.1077),                                                                                                     -- 60 mi
   ('10000000-0000-0000-0000-000000000009', '00000000-0000-0000-0000-000000000002', 'Depot Taproom', 'Taproom',
-     null, '{"DJ booth"}', '{DJ}', 'Dunmore', 'MO', 38 + 112/69.09, -92),
+     null, '{"DJ booth"}', '{DJ}', 'Conway', 'AR', 35.0887, -92.4421),                                                                                               -- 118 mi
   ('10000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000002', 'County Fair Stage', 'Outdoor stage',
-     null, '{Stage,"PA system"}', '{Band}', 'Fairview', 'MO', 38 + 145/69.09, -92);
+     null, '{Stage,"PA system"}', '{Band}', 'Little Rock', 'AR', 34.7465, -92.2896);                                                                                 -- 139 mi
 
 -- ---------------------------------------------------------------
--- Artists (Mara Voss at home; the rest south of home)
+-- Artists (Mara Voss at home; the others where the Musicians board puts them)
 -- ---------------------------------------------------------------
 insert into artists (id, owner_id, name, act_type, genres, bio, town, state, lat, lng) values
   ('20000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000011', 'Mara Voss', 'Singer', '{Jazz,Soul}',
-     'Who you are, what you play, where you have played.', 'Home', 'MO', 38, -92),
+     'Who you are, what you play, where you have played.', 'Fayetteville', 'AR', 36.0626, -94.1574),
   ('20000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000012', 'DJ Kestrel', 'DJ', '{House}',
-     null, 'Southbend', 'MO', 38 - 55/69.09, -92),
+     null, 'Fort Smith', 'AR', 35.3859, -94.3985),
   ('20000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000012', 'The Loose Ends', 'Band', '{"Indie rock"}',
-     'Four-piece, own PA, happy to travel.', 'Millbrook', 'MO', 38 - 90/69.09, -92),
+     'Four-piece, own PA, happy to travel.', 'Springdale', 'AR', 36.1750, -94.1350),
   ('20000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000012', 'Eli Park', 'Solo', '{Acoustic}',
-     null, 'Home', 'MO', 38 - 4/69.09, -92);
+     null, 'Fayetteville', 'AR', 36.0720, -94.1300),
+  ('20000000-0000-0000-0000-000000000005', '00000000-0000-0000-0000-000000000012', 'Brass Tacks Trio', 'Band', '{Blues}',
+     null, 'Rogers', 'AR', 36.3320, -94.1185);
 
 insert into social_links (artist_id, platform, url) values
   ('20000000-0000-0000-0000-000000000001', 'instagram', 'https://example.com/maravoss/instagram'),
   ('20000000-0000-0000-0000-000000000001', 'spotify',   'https://example.com/maravoss/spotify');
 
 -- ---------------------------------------------------------------
--- Gigs (state.gigs in index.html)
+-- Gigs (g1-g10 in state.gigs in index.html; isodow 5 = Fri, 6 = Sat, 7 = Sun)
 -- ---------------------------------------------------------------
 insert into gigs (id, venue_id, act_type, starts_at, pay_cents, genre, reach, travel) values
-  ('30000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'Singer', current_date + 2 + time '20:00', 18000, 'Jazz',      'Region',    'None'),
-  ('30000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000002', 'Band',   current_date + 1 + time '21:00', 30000, 'Rock',      'Town',      'None'),
-  ('30000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000003', 'DJ',     current_date + 2 + time '22:00', 25000, 'House',     'Region',    'None'),
-  ('30000000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000004', 'Solo',   current_date + 3 + time '19:00', 12000, 'Acoustic',  'Town',      'None'),
-  ('30000000-0000-0000-0000-000000000005', '10000000-0000-0000-0000-000000000005', 'Singer', current_date + 3 + time '20:00', 18000, 'Standards', 'Town',      'None'),
-  ('30000000-0000-0000-0000-000000000006', '10000000-0000-0000-0000-000000000006', 'Band',   current_date + 4 + time '16:00', 20000, 'Blues',     'Region',    'None'),
-  ('30000000-0000-0000-0000-000000000007', '10000000-0000-0000-0000-000000000007', 'Band',   current_date + 3 + time '21:00', 45000, 'Country',   'Region',    'Gas'),
-  ('30000000-0000-0000-0000-000000000008', '10000000-0000-0000-0000-000000000008', 'Solo',   current_date + 2 + time '18:00', 20000, 'Acoustic',  'Statewide', 'Gas + room'),
-  ('30000000-0000-0000-0000-000000000009', '10000000-0000-0000-0000-000000000009', 'DJ',     current_date + 3 + time '22:00', 35000, 'House',     'Statewide', 'Gas + room'),
-  ('30000000-0000-0000-0000-000000000010', '10000000-0000-0000-0000-000000000010', 'Band',   current_date + 4 + time '14:00', 60000, 'Country',   'Statewide', 'Lodging');
+  ('30000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'Singer', pg_temp.at_local(pg_temp.next_day(5), '20:00'), 18000, 'Jazz',      'Region',    'None'),
+  ('30000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000002', 'Band',   pg_temp.at_local((now() at time zone 'America/Chicago')::date, '21:00'), 30000, 'Rock', 'Town', 'None'),  -- tonight
+  ('30000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000003', 'DJ',     pg_temp.at_local(pg_temp.next_day(5), '22:00'), 25000, 'House',     'Region',    'None'),
+  ('30000000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000004', 'Solo',   pg_temp.at_local(pg_temp.next_day(6), '19:00'), 12000, 'Acoustic',  'Town',      'None'),
+  ('30000000-0000-0000-0000-000000000005', '10000000-0000-0000-0000-000000000005', 'Singer', pg_temp.at_local(pg_temp.next_day(6), '20:00'), 18000, 'Standards', 'Town',      'None'),
+  ('30000000-0000-0000-0000-000000000006', '10000000-0000-0000-0000-000000000006', 'Band',   pg_temp.at_local(pg_temp.next_day(7), '16:00'), 20000, 'Blues',     'Region',    'None'),
+  ('30000000-0000-0000-0000-000000000007', '10000000-0000-0000-0000-000000000007', 'Band',   pg_temp.at_local(pg_temp.next_day(6), '21:00'), 45000, 'Country',   'Region',    'Gas'),
+  ('30000000-0000-0000-0000-000000000008', '10000000-0000-0000-0000-000000000008', 'Solo',   pg_temp.at_local(pg_temp.next_day(5), '18:00'), 20000, 'Acoustic',  'Statewide', 'Gas + room'),
+  ('30000000-0000-0000-0000-000000000009', '10000000-0000-0000-0000-000000000009', 'DJ',     pg_temp.at_local(pg_temp.next_day(6), '22:00'), 35000, 'House',     'Statewide', 'Gas + room'),
+  ('30000000-0000-0000-0000-000000000010', '10000000-0000-0000-0000-000000000010', 'Band',   pg_temp.at_local(pg_temp.next_day(7), '14:00'), 60000, 'Country',   'Statewide', 'Lodging');
+
+-- ---------------------------------------------------------------
+-- Live shows (state.bookings in index.html): 4 gigs already booked.
+-- Each booked artist has an accepted application, the gig is filled,
+-- and it no longer shows up in "Gigs near you".
+-- ---------------------------------------------------------------
+insert into applications (gig_id, artist_id, status) values
+  ('30000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000003', 'accepted'),  -- Rusty Anchor   <- The Loose Ends
+  ('30000000-0000-0000-0000-000000000006', '20000000-0000-0000-0000-000000000005', 'accepted'),  -- Brick & Barrel <- Brass Tacks Trio
+  ('30000000-0000-0000-0000-000000000008', '20000000-0000-0000-0000-000000000004', 'accepted'),  -- Lakeside Lodge <- Eli Park
+  ('30000000-0000-0000-0000-000000000009', '20000000-0000-0000-0000-000000000002', 'accepted');  -- Depot Taproom  <- DJ Kestrel
+
+insert into bookings (gig_id, artist_id, agreed_pay_cents)
+select a.gig_id, a.artist_id, g.pay_cents
+from applications a join gigs g on g.id = a.gig_id
+where a.status = 'accepted';
+
+update gigs set status = 'filled' where id in (select gig_id from bookings);
 
 -- ---------------------------------------------------------------
 -- Media: reels (REELS in index.html) and Mara's portfolio

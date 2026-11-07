@@ -61,7 +61,29 @@ const counts = (await db.query(`select
   (select count(*) from artists)::int a, (select count(*) from gigs)::int g,
   (select count(*) from media where in_reels)::int r`)).rows[0];
 check('signup trigger made 4 profiles', counts.p === 4, JSON.stringify(counts));
-check('10 venues, 4 artists, 10 gigs, 7 reels', counts.v === 10 && counts.a === 4 && counts.g === 10 && counts.r === 7);
+check('10 venues, 5 artists, 10 gigs, 7 reels', counts.v === 10 && counts.a === 5 && counts.g === 10 && counts.r === 7, JSON.stringify(counts));
+
+// --- Arkansas locations (HOME and venue miles from BACKEND_SETUP.md section 6) ---
+const HOME = [36.0626, -94.1574];
+const venueMiles = (await db.query(`select name, town, state, miles_between($1, $2, lat, lng) m from venues order by id`, HOME)).rows;
+const expected = [['The Corner Stage', 0.3], ['The Rusty Anchor', 1.0], ['Velvet Room', 2.0], ['Café Lune', 0.9], ['Harbor House', 8.7],
+  ['Brick & Barrel', 1.8], ['The Grain Elevator', 33], ['Lakeside Lodge', 60], ['Depot Taproom', 118], ['County Fair Stage', 139]];
+const off = expected.filter(([n, mi], i) => venueMiles[i].name !== n || venueMiles[i].state !== 'AR' || Math.abs(venueMiles[i].m - mi) > (mi < 10 ? 0.1 : 1));
+check('venues are at the Arkansas places in the setup guide', off.length === 0,
+  off.length ? off.map(([n]) => n).join(', ') : venueMiles.map(v => `${v.town} ${v.m.toFixed(1)}`).join(' / '));
+const mara = (await db.query(`select town, lat, lng from artists where id = $1`, [MARA_ARTIST])).rows[0];
+check('Mara Voss lives at HOME (Fayetteville)', mara.lat === HOME[0] && mara.lng === HOME[1] && mara.town === 'Fayetteville');
+
+// --- Live shows: the 4 sample bookings (state.bookings in index.html) ---
+const live = (await db.query(`select v.name venue, a.name artist, g.status::text, b.agreed_pay_cents = g.pay_cents same_pay,
+  (select status::text from applications x where x.gig_id = g.id and x.artist_id = a.id) app
+  from bookings b join gigs g on g.id = b.gig_id join venues v on v.id = g.venue_id join artists a on a.id = b.artist_id order by v.name`)).rows;
+check('4 sample live shows: Brick & Barrel, Depot Taproom, Lakeside Lodge, Rusty Anchor',
+  live.map(r => r.venue + '=' + r.artist).join(', ') === 'Brick & Barrel=Brass Tacks Trio, Depot Taproom=DJ Kestrel, Lakeside Lodge=Eli Park, The Rusty Anchor=The Loose Ends',
+  live.map(r => r.venue + '=' + r.artist).join(', '));
+check('each live show: gig filled, pay copied, application accepted', live.every(r => r.status === 'filled' && r.same_pay && r.app === 'accepted'));
+const future = (await db.query(`select count(*)::int n from gigs where status = 'open' and starts_at <= now()`)).rows[0].n;
+check('every open sample gig is in the future', future === 0, `past=${future}`);
 const roles = (await db.query(`select role::text from profiles where id = $1`, [CORNER])).rows[0].role;
 check('profile role comes from sign-up metadata', roles === 'venue', roles);
 
@@ -81,19 +103,23 @@ check('every function has a fixed search_path', unpinned === null, unpinned || '
 const reach = async (artist, range, act = null) =>
   (await db.query(`select * from gigs_in_reach($1, $2, $3)`, [artist, range, act])).rows;
 const town = await reach(MARA_ARTIST, 'Town');
-check('Mara / Town = 6 gigs (matches prototype)', town.length === 6, town.map(r => r.venue_name).join(', '));
-check('Mara / Region = 8 gigs (matches prototype)', (await reach(MARA_ARTIST, 'Region')).length === 8);
-check('Mara / Statewide = 10 gigs (matches prototype)', (await reach(MARA_ARTIST, 'Statewide')).length === 10);
+// Booked gigs drop out, as in the app (index.html hides a gig someone else got).
+check('Mara / Town = 4 gigs (matches prototype)', town.length === 4, town.map(r => r.venue_name).join(', '));
+check('Mara / Region = 5 gigs (matches prototype)', (await reach(MARA_ARTIST, 'Region')).length === 5);
+check('Mara / Statewide = 6 gigs (matches prototype)', (await reach(MARA_ARTIST, 'Statewide')).length === 6);
 check('nearest gig is listed first', town[0].venue_name === 'The Corner Stage', `${town[0].venue_name} ${town[0].miles.toFixed(2)} mi`);
-const miles = (await db.query(`select miles_between(38, -92, 38 + 38/69.09, -92) m`)).rows[0].m;
-check('Grain Elevator is ~38 mi away', Math.abs(miles - 38) < 0.1, miles.toFixed(2));
+const grain = (await reach(MARA_ARTIST, 'Region')).find(r => r.venue_name === 'The Grain Elevator');
+check('Grain Elevator (Eureka Springs) is ~33 mi away', Math.abs(grain.miles - 33) < 1, grain.miles.toFixed(2));
+// Kestrel is in Fort Smith, ~49 mi out: Town venues (Café Lune, Harbor House) and the
+// Grain Elevator (Region, ~79 mi from him) don't want him; the rest are booked.
 const kes = await reach(KESTREL, 'Statewide');
-check('Kestrel (55 mi out) / Statewide = 6: venue Town/Region limits respected', kes.length === 6, kes.map(r => r.venue_name).join(', '));
-check('Kestrel / Statewide / DJ only = 2', (await reach(KESTREL, 'Statewide', 'DJ')).length === 2);
+check('Kestrel (Fort Smith) / Statewide = 3: venue Town/Region limits respected', kes.length === 3, kes.map(r => r.venue_name).join(', '));
+check('Kestrel / Statewide / DJ only = 1 (Velvet Room)', (await reach(KESTREL, 'Statewide', 'DJ')).map(r => r.venue_name).join() === 'Velvet Room');
 
 // --- RLS: browsing ---
 await as(null);
-check('anon can browse open gigs', (await db.query(`select * from gig_cards`)).rows.length === 10);
+check('anon can browse the 6 open gigs, not the filled ones', (await db.query(`select * from gig_cards`)).rows.length === 6);
+check('anon cannot see bookings', (await db.query(`select * from bookings`)).rows.length === 0);
 await asAdmin();
 await db.query(`insert into applications (gig_id, artist_id) values ($1, $2)`, [GIG_RUSTY, ELI]);
 

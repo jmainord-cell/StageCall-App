@@ -6,7 +6,7 @@ PostgreSQL schema for Stagecall, written for [Supabase](https://supabase.com) (f
 |---|---|
 | `schema.sql` | Tables, types, the distance functions, and the `gig_cards` view |
 | `policies.sql` | Row-level security (who can read and write what), the sign-up trigger, and the application rules |
-| `seed.sql` | Sample data matching the prototype: 10 venues, 4 artists, 10 gigs, 7 reels |
+| `seed.sql` | Sample data matching the prototype: 10 venues in real Arkansas towns (home is Fayetteville), 5 artists, 10 gigs (4 already booked as live shows), 7 reels |
 | `test.mjs` | 39 automated checks run against real Postgres |
 | `migrations/` | Upgrades for the live database, applied in number order. A fresh setup doesn't need them: `schema.sql` and `policies.sql` already include every change. |
 
@@ -108,7 +108,7 @@ npm test
 ```
 
 The tests load all three files into PGlite (real Postgres running in Node, no install or account needed), then check that:
-- the sample data matches the prototype's gig counts for each range (6 / 8 / 10),
+- the sample data matches the prototype's gig counts for each range (4 / 5 / 6 for Mara; booked gigs drop out, as in the app),
 - the venue's reach limit is respected,
 - every security rule holds.
 
