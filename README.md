@@ -1,5 +1,7 @@
 # Stagecall (prototype)
 
+**Open the app:** https://jmainord-cell.github.io/StageCall-App/
+
 A clickable prototype of a gig marketplace for musicians, DJs, singers, and venues, built for small towns and whole states, not just big cities.
 
 - **Venues** pick what they need (DJ, Band, Solo musician, Singer), set the date, pay, style, how far to reach (town, region, statewide), and whether they can help with travel.
@@ -34,7 +36,9 @@ The sample gigs move themselves to the coming Fri / Sat / Sun every night at 3 A
 
 ## Run it
 
-Serve the folder and open it, for example `python3 -m http.server` then http://localhost:8000. No build step and nothing to install. It loads Google Fonts, [Leaflet](https://leafletjs.com) (the map), and [supabase-js](https://supabase.com/docs/reference/javascript) (the database) from the web, so it needs an internet connection. The Supabase anon key in `api.js` is public by design; the database's row-level security protects the data.
+The live version is at https://jmainord-cell.github.io/StageCall-App/ (GitHub Pages publishes the `main` branch).
+
+To run it on your own computer, serve the folder and open it, for example `python3 -m http.server` then http://localhost:8000 (the server has to be running in that folder). No build step and nothing to install. It loads Google Fonts, [Leaflet](https://leafletjs.com) (the map), and [supabase-js](https://supabase.com/docs/reference/javascript) (the database) from the web, so it needs an internet connection. The Supabase anon key in `api.js` is public by design; the database's row-level security protects the data.
 
 ## Put it on GitHub Pages
 
