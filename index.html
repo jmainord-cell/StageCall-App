@@ -1267,6 +1267,7 @@ function artistProfileView() {
       '<h1 class="display" style="margin-top:12px;font-size:28px;font-weight:700;letter-spacing:-0.6px">' + esc(a.name) + '</h1>' +
       '<p style="margin-top:4px;font-size:15px;color:var(--mute)">' + esc(ME.line) + ' · ' + esc(a.town || '') + (a.open_to_gigs ? ' · Open to gigs' : '') + '</p>' +
       (a.bio ? '<p style="margin-top:12px;font-size:15px;line-height:1.5;color:var(--text)">' + esc(a.bio) + '</p>' : '') +
+      accountLine() +
       myEventsView() +
       '<h2 class="section">Socials &amp; music</h2>' +
       '<div class="grid2" style="margin-top:12px">' + socials + '</div>' +
@@ -1294,6 +1295,7 @@ function venueProfileView() {
       '<h1 class="display" style="margin-top:12px;font-size:28px;font-weight:700;letter-spacing:-0.6px">' + esc(v.name) + '</h1>' +
       '<p style="margin-top:4px;font-size:15px;color:var(--mute)">' + esc([v.kind, v.town].filter(Boolean).join(' · ')) + '</p>' +
       (v.about ? '<p style="margin-top:12px;font-size:15px;line-height:1.5;color:var(--text)">' + esc(v.about) + '</p>' : '') +
+      accountLine() +
       myEventsView() +
       '<h2 class="section">Photos</h2>' +
       '<div class="grid3" style="margin-top:12px">' + photos +
@@ -1304,6 +1306,13 @@ function venueProfileView() {
       '<div class="wrap" style="margin-top:12px">' + pills(v.books, true) + '</div>' +
       signOutLink() +
     '</div></div>';
+}
+
+// "Signed in as … · Sign out", right under your name on Profile
+function accountLine() {
+  return '<div style="margin-top:6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+    '<span style="font-size:13px;color:var(--mute)">Signed in as ' + esc(api.me.email) + '</span>' +
+    '<button class="link" data-act="signOut">Sign out</button></div>';
 }
 
 function signOutLink() {
