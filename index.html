@@ -8,6 +8,9 @@
 <!-- Leaflet (open-source map library) for the Map tab -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<!-- Supabase (the database and sign-in), then api.js: every database call the app makes -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js" integrity="sha384-GFr3yTh5lJznCbZfpTtXnwboFsxqtTQoeTZCRHhE0579KrRmlCzen5AA8ohaB5ug" crossorigin="anonymous"></script>
+<script src="api.js"></script>
 <style>
 /* ---------------------------------------------------------------
    Stagecall look: a wall of local gig flyers.
@@ -197,6 +200,10 @@ h2.section { margin-top: 28px; font-family: var(--display); font-weight: 400; fo
 .pick { -webkit-appearance: none; appearance: none; flex-shrink: 0; min-height: 44px; padding: 0 36px 0 14px; border-radius: 6px; border: 2px solid var(--ink); color: var(--ink); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
   background: var(--hi) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%231A1714' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center; }
 .pick option { background: var(--s1); color: var(--ink); }
+/* text fields (sign in, profile): same border, corners and paper as the picker */
+.inp { display: block; width: 100%; min-height: 48px; margin-top: 8px; padding: 0 14px; border-radius: 6px; border: 2px solid var(--ink); background: var(--s1); color: var(--ink); font: inherit; font-size: 16px; }
+textarea.inp { min-height: 88px; padding: 12px 14px; line-height: 1.4; resize: vertical; }
+.inp::placeholder { color: var(--mute); }
 .thumb.sm { width: 54px; height: 54px; }
 
 /* map */
@@ -523,28 +530,19 @@ var REELS = [
   { id: 'v3', kind: 'venue', name: 'Café Lune', line: 'Café · Acoustic corner', where: '38 mi away', caption: 'Weekend evenings, small crowd, good listening room.', bg: 'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#39FF14' }
 ];
 
-// "You" when using the Artist side. Shows up in a venue's applicant list after you apply.
-var ME = { id: 'me', name: 'Mara Voss', line: 'Singer · Jazz & soul', where: '12 mi away', bg: 'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#00E5FF' };
+// "You" as an artist. Filled in from your artist profile after you sign in.
+var ME = { id: 'me', name: '', line: '', where: '', bg: 'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#00E5FF' };
 
-// Sample artists who already applied to a venue's gigs, keyed by gig id.
-var POOL = {
-  g1: [
-    { id: 'p1', name: 'June Harlow', line: 'Singer · Soul & R&B', where: '9 mi away', bg: 'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#39FF14' },
-    { id: 'p2', name: 'Theo Brandt', line: 'Singer · Standards', where: '22 mi away', bg: 'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#FF3B1F' }
-  ],
-  // the artists already booked for the sample live shows (see state.bookings)
-  g2: [{ id: 'p3', name: 'The Loose Ends', line: 'Band · Indie rock', where: '9 mi away', bg: 'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#FF3B1F' }],
-  g6: [{ id: 'p5', name: 'Brass Tacks Trio', line: 'Band · Blues', where: '22 mi away', bg: 'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#FFFFFF' }],
-  g8: [{ id: 'p6', name: 'Eli Park', line: 'Solo musician · Acoustic', where: '4 mi away', bg: 'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#FFF200' }],
-  g9: [{ id: 'p4', name: 'DJ Kestrel', line: 'DJ · House', where: '55 mi away', bg: 'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#39FF14' }]
-};
+// Applicants per gig (and the artist booked for each live show), keyed by gig id.
+// Loaded from the database by api.loadAll().
+var POOL = {};
 
 // ---------------------------------------------------------------
 // Places. The demo is set in Arkansas with home in Fayetteville; every gig has real
 // coordinates, and distances are worked out from them (straight-line miles).
 // To move the demo, change HOME and the town/lat/lng on the sample gigs.
 // ---------------------------------------------------------------
-var HOME = { name: 'Fayetteville', lat: 36.0626, lng: -94.1574 };
+var HOME = { name: 'Fayetteville', lat: 36.0626, lng: -94.1574 };   // replaced by your profile's town after sign-in
 var HOME_TOWN = HOME.name;
 var TOWNS = {
   'Fayetteville':   { lat: 36.0626, lng: -94.1574 },
@@ -571,25 +569,6 @@ function withDist(g) {
   return g;
 }
 
-// Sample musicians who reply when you post on the Musicians board, keyed by who you're looking for.
-// (No real accounts yet, so these stand in for other people so the review step can be tried.)
-var RESPONDERS = {
-  Band: [
-    { id: 'r1', name: 'The Loose Ends', line: 'Band · Indie rock', where: '9 mi away', bg: 'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#FF3B1F' },
-    { id: 'r2', name: 'Brass Tacks Trio', line: 'Band · Blues', where: '22 mi away', bg: 'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#FFFFFF' }
-  ],
-  Solo: [
-    { id: 'r3', name: 'Eli Park', line: 'Solo musician · Acoustic', where: '4 mi away', bg: 'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#FFF200' },
-    { id: 'r4', name: 'Nina Okafor', line: 'Solo musician · Folk guitar', where: '31 mi away', bg: 'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#39FF14' }
-  ],
-  Singer: [
-    { id: 'r5', name: 'June Harlow', line: 'Singer · Soul & R&B', where: '9 mi away', bg: 'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#39FF14' },
-    { id: 'r6', name: 'Rosa Vale', line: 'Singer · Country', where: '64 mi away', bg: 'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#FF1F8E' }
-  ],
-  DJ: [
-    { id: 'r7', name: 'DJ Kestrel', line: 'DJ · House', where: '55 mi away', bg: 'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#39FF14' }
-  ]
-};
 
 var PURPOSES = ['Fill-in for a show', 'Opening act', 'Backing band', 'Join my act', 'Jam / session'];
 
@@ -634,45 +613,34 @@ var state = {
   range: 'Region',        // 'Town' | 'Region' | 'Statewide'
   sheet: null,            // null | { kind: 'post', type: 'DJ' } | { kind: 'review', id: 'g1' }
   form: defaultForm(),
-  gigs: [
-    { id: 'g1', venue: 'The Corner Stage', type: 'Singer', when: 'Fri · 8 PM', pay: '$180', genre: 'Jazz', town: 'Fayetteville', lat: 36.066, lng: -94.1608, mine: true, applicants: 0 },
-    { id: 'g2', venue: 'The Rusty Anchor', type: 'Band', when: 'Tonight · 9 PM', pay: '$300', genre: 'Rock', town: 'Fayetteville', lat: 36.0768, lng: -94.1612, mine: false, applicants: 0 },
-    { id: 'g3', venue: 'Velvet Room', type: 'DJ', when: 'Fri · 10 PM', pay: '$250', genre: 'House', town: 'Fayetteville', lat: 36.0905, lng: -94.169, mine: false, applicants: 0 },
-    { id: 'g4', venue: 'Café Lune', type: 'Solo', when: 'Sat · 7 PM', pay: '$120', genre: 'Acoustic', town: 'Fayetteville', lat: 36.0545, lng: -94.1702, mine: false, applicants: 0 },
-    { id: 'g5', venue: 'Harbor House', type: 'Singer', when: 'Sat · 8 PM', pay: '$180', genre: 'Standards', town: 'Springdale', lat: 36.1867, lng: -94.1288, mine: false, applicants: 0 },
-    { id: 'g6', venue: 'Brick & Barrel', type: 'Band', when: 'Sun · 4 PM', pay: '$200', genre: 'Blues', town: 'Fayetteville', lat: 36.0398, lng: -94.1405, mine: false, applicants: 0 },
-    { id: 'g7', venue: 'The Grain Elevator', type: 'Band', when: 'Sat · 9 PM', pay: '$450', genre: 'Country', town: 'Eureka Springs', lat: 36.4012, lng: -93.7379, travel: 'Gas covered', mine: false, applicants: 0 },
-    { id: 'g8', venue: 'Lakeside Lodge', type: 'Solo', when: 'Fri · 6 PM', pay: '$200', genre: 'Acoustic', town: 'Harrison', lat: 36.2298, lng: -93.1077, travel: 'Gas + room', mine: false, applicants: 0 },
-    { id: 'g9', venue: 'Depot Taproom', type: 'DJ', when: 'Sat · 10 PM', pay: '$350', genre: 'House', town: 'Conway', lat: 35.0887, lng: -92.4421, travel: 'Gas + room', mine: false, applicants: 0 },
-    { id: 'g10', venue: 'County Fair Stage', type: 'Band', when: 'Sun · 2 PM', pay: '$600', genre: 'Country', town: 'Little Rock', lat: 34.7465, lng: -92.2896, travel: 'Lodging included', mine: false, applicants: 0 },
-
-    // Musicians board: artists looking for other artists. type = who they want.
-    { id: 'c1', kind: 'collab', venue: 'The Loose Ends', byLine: 'Band · Indie rock', bg: 'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#FF3B1F', type: 'Singer', purpose: 'Fill-in for a show', when: 'Sat · 9 PM', pay: '$150', genre: 'Indie rock', town: 'Springdale', lat: 36.175, lng: -94.135, note: 'Our singer is out sick. Can you learn 8 covers by Saturday?' },
-    { id: 'c2', kind: 'collab', venue: 'Brass Tacks Trio', byLine: 'Band · Blues', bg: 'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#FFFFFF', type: 'Solo', purpose: 'Opening act', when: 'Fri · 7 PM', pay: '$100', genre: 'Blues', town: 'Rogers', lat: 36.332, lng: -94.1185, note: '30-minute acoustic opener before our set at Brick & Barrel.' },
-    { id: 'c3', kind: 'collab', venue: 'Eli Park', byLine: 'Solo musician · Acoustic', bg: 'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#FFF200', type: 'Band', purpose: 'Backing band', when: 'Sun · 4 PM', pay: 'Split the door', genre: 'Acoustic', town: 'Fayetteville', lat: 36.072, lng: -94.13, note: 'Need bass and drums behind me for a patio show. Charts provided.' },
-    { id: 'c4', kind: 'collab', venue: 'Rosa Vale', byLine: 'Singer · Country', bg: 'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#FF1F8E', type: 'Band', purpose: 'Join my act', when: 'Ongoing', pay: 'Split the door', genre: 'Country', town: 'Harrison', lat: 36.235, lng: -93.115, note: 'Booking fair season. Looking for a steady band to tour the state with.' },
-    { id: 'c5', kind: 'collab', venue: 'DJ Kestrel', byLine: 'DJ · House', bg: 'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#39FF14', type: 'Singer', purpose: 'Jam / session', when: 'Flexible', pay: 'Unpaid', genre: 'House', town: 'Fort Smith', lat: 35.3859, lng: -94.3985, note: 'Want a vocalist for a live house set. Let’s try a session first.' }
-  ],
+  gigs: [],               // venue gigs, Musicians board posts and live shows, from api.loadAll()
   gigsView: 'venues',     // artist Gigs tab: 'venues' | 'musicians'
   collabFilter: 'All',    // Musicians board: who the post is looking for
   applied: {},
   liked: {},
   invited: {},
-  linked: { ig: true, yt: false, sp: true, sc: false },
+  linked: {},             // linked socials, loaded from your profile
   // gig id -> booked applicant id ('me' = you, the artist). Booked venue gigs are the "live shows" on the map.
-  bookings: { g2: 'p3', g6: 'p5', g8: 'p6', g9: 'p4' },
+  bookings: {},
   mapFilter: 'all',       // 'all' | 'open' | 'live'
   mapTown: 'Fayetteville', // area expanded under the map
   mapStyle: 'Streets',       // 'Streets' | 'Dark'
   declined: {},           // 'gigId:applicantId' -> true
-  toast: ''
+  toast: '',
+  // signing in: 'loading' | 'signedOut' | 'profile' (make your artist/venue profile) | 'ready'
+  auth: 'loading',
+  authMode: 'signin',     // 'signin' | 'signup'
+  fields: {},             // what's typed in the sign-in and profile forms
+  picks: {},              // chips chosen in those forms (act type, styles, town, ...)
+  events: [],             // "My events" on the Profile tab
+  busy: false             // a database call is running
 };
 
-// Keep the demo between refreshes (this browser only). "Reset demo data" on Profile clears it.
+// Remember screen settings between visits (this browser only). The data itself lives in the database.
 state.gigs.forEach(withDist);
 
-var SAVE_KEY = 'stagecall-demo-v5';
-var SAVED = ['role', 'tab', 'reelMode', 'filter', 'range', 'gigsView', 'collabFilter', 'mapFilter', 'mapTown', 'mapStyle', 'gigs', 'applied', 'liked', 'invited', 'linked', 'bookings', 'declined'];
+var SAVE_KEY = 'stagecall-v6';
+var SAVED = ['tab', 'reelMode', 'filter', 'range', 'gigsView', 'collabFilter', 'mapFilter', 'mapTown', 'mapStyle', 'liked', 'invited'];
 function save() {
   try {
     var out = {};
@@ -774,6 +742,8 @@ function wallStickers(key) {
       return stk('burst', 'top:10px;right:14px;--r:10deg;--bg:#FF1F8E', 'LIVE<br>!!') + spark(84, 96, 14, '#39FF14', 0, .6);
     case 'profile':
       return spark(18, 26, 26, '#fff', 0, 0) + spark(52, 70, 14, '#FFF200', 15, .9) + stk('barcode', 'top:150px;right:16px;--r:4deg', '<i></i>0 47911 2026');
+    case 'gate':   // sign-in: sparkles only, nothing near the buttons
+      return spark(18, 26, 26, '#fff', 0, 0) + spark(52, 70, 14, '#FFF200', 15, .9);
     case 'venue-profile':
       return spark(22, 30, 22, '#FF1F8E', 0, .2) + stk('label-stk', 'top:154px;right:16px;--r:-5deg', '★ ALL AGES ★');
   }
@@ -818,10 +788,11 @@ function headerView() {
   var v = state.role === 'venue';
   return '<div class="header">' +
     '<div class="brand"><div class="logo">' + icon(IC.logo, 18, 2.4) + '</div><div class="brand-name ransom">' + ransom('Stagecall', true) + '</div></div>' +
-    '<div class="seg" role="group" aria-label="View the app as">' +
-      '<button class="' + (v ? 'on' : '') + '" aria-pressed="' + v + '" data-act="role" data-val="venue">Venue</button>' +
-      '<button class="' + (!v ? 'on' : '') + '" aria-pressed="' + !v + '" data-act="role" data-val="artist">Artist</button>' +
-    '</div></div>';
+    // your account type (from sign-up); tap it to go to your profile
+    (state.auth === 'ready'
+      ? '<div class="seg"><button class="on" data-act="tab" data-val="profile" aria-label="Signed in as ' + (v ? 'a venue' : 'an artist') + '. Open your profile">' + (v ? 'Venue' : 'Artist') + '</button></div>'
+      : '') +
+    '</div>';
 }
 
 function venueGigsView() {
@@ -878,7 +849,7 @@ function artistGigsView() {
     if (mineOnly) return !!state.applied[g.id];
     // a gig someone else already got is gone from browse, unless you applied to it
     if (state.bookings[g.id] && !state.applied[g.id]) return false;
-    return (state.filter === 'All' || g.type === state.filter) && parseFloat(g.dist) <= maxMiles;
+    return (state.filter === 'All' || g.type === state.filter) && inReach(g, maxMiles);
   });
   var cards = shown.map(function (g, i) {
     var st = myStatus(g);
@@ -931,6 +902,12 @@ function artistGigsView() {
       cards + '</div></div>';
 }
 
+// In range both ways: within how far you'll go, and within how far the poster draws from
+function inReach(g, maxMiles) {
+  var mi = parseFloat(g.dist);
+  return mi <= maxMiles && mi <= (RANGE_MILES[g.reach] || RANGE_MILES.Statewide);
+}
+
 // "How far will you go?" as one compact dropdown instead of a second row of chips
 function rangePicker() {
   var opts = [['Town', 'Within 15 mi'], ['Region', 'Within 75 mi'], ['Statewide', 'Anywhere in state']].map(function (r) {
@@ -957,7 +934,7 @@ function musiciansView() {
   var others = state.gigs.filter(function (g) {
     if (!isCollab(g) || g.mine) return false;
     if (state.bookings[g.id] && !state.applied[g.id]) return false;
-    return (state.collabFilter === 'All' || g.type === state.collabFilter) && parseFloat(g.dist) <= maxMiles;
+    return (state.collabFilter === 'All' || g.type === state.collabFilter) && inReach(g, maxMiles);
   });
   var mine = state.gigs.filter(function (g) { return isCollab(g) && g.mine; });
 
@@ -1068,7 +1045,8 @@ function initMap() {
   mapLayer = L.layerGroup().addTo(lmap);
   lmap.on('zoomend', drawMapMarkers);
   var pts = state.gigs.filter(function (g) { return !isCollab(g) && g.lat != null; }).map(function (g) { return [g.lat, g.lng]; });
-  lmap.fitBounds(pts, { padding: [24, 24] });
+  if (pts.length) lmap.fitBounds(pts.concat([[HOME.lat, HOME.lng]]), { padding: [24, 24] });
+  else lmap.setView([HOME.lat, HOME.lng], 9);
 }
 
 function gigPopup(g) {
@@ -1263,63 +1241,108 @@ function reelsView() {
 }
 
 function artistProfileView() {
+  var a = api.me.artist;
   var socials = SOCIALS.map(function (d) {
     var on = !!state.linked[d.k];
     return '<button class="social' + (on ? ' on' : '') + '" data-act="social" data-val="' + d.k + '">' + (on ? d.label + ' · Linked' : '+ Link ' + d.label) + '</button>';
   }).join('');
   var heights = [8, 16, 11, 20, 13, 18, 9, 15, 20, 12, 17, 8, 14, 19, 10, 16];
   var bars = heights.map(function (h) { return '<i style="height:' + h + 'px"></i>'; }).join('');
+  // your videos and audio (same tiles as before; the files themselves come with uploads)
+  var VID_BG = ['#39FF14', '#FF3B1F', '#00E5FF', '#FFF200'];
+  var portfolio = api.me.media.filter(function (m) { return m.kind !== 'photo'; }).map(function (m, i) {
+    if (m.kind === 'audio') {
+      return '<div class="audio"><div style="width:40px;height:40px;border-radius:20px;background:var(--accent);color:var(--ink);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 001.5.86l10.5-6.5a1 1 0 000-1.72L9.5 4.64A1 1 0 008 5.5z"/></svg></div>' +
+        '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600">' + esc(m.title || 'Audio') + '</div><div class="bars">' + bars + '</div></div>' +
+        '<div style="font-size:13px;color:var(--mute)">Audio</div></div>';
+    }
+    return '<div><div class="vid" style="background:radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,' + VID_BG[i % VID_BG.length] + '">' + PLAY + '</div>' +
+      '<div style="margin-top:6px;font-size:14px;font-weight:600">' + esc(m.title || 'Video') + '</div><div style="font-size:13px;color:var(--mute)">Video</div></div>';
+  }).join('');
 
   return '<div class="scroll noscroll" style="padding-bottom:28px" data-keep="artist-profile">' + wallStickers('profile') +
     '<div class="cover" style="background:radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#00E5FF"></div>' +
     '<div style="padding:0 20px">' +
-      '<div class="avatar display" style="border-radius:42px;font-size:28px;font-weight:700">MV</div>' +
-      '<h1 class="display" style="margin-top:12px;font-size:28px;font-weight:700;letter-spacing:-0.6px">Mara Voss</h1>' +
-      '<p style="margin-top:4px;font-size:15px;color:var(--mute)">Singer · Jazz &amp; soul · Open to gigs</p>' +
-      '<p style="margin-top:12px;font-size:15px;line-height:1.5;color:var(--text)">[Short bio: who you are, what you play, where you have played.]</p>' +
+      '<div class="avatar display" style="border-radius:42px;font-size:28px;font-weight:700">' + esc(initials(a.name)) + '</div>' +
+      '<h1 class="display" style="margin-top:12px;font-size:28px;font-weight:700;letter-spacing:-0.6px">' + esc(a.name) + '</h1>' +
+      '<p style="margin-top:4px;font-size:15px;color:var(--mute)">' + esc(ME.line) + ' · ' + esc(a.town || '') + (a.open_to_gigs ? ' · Open to gigs' : '') + '</p>' +
+      (a.bio ? '<p style="margin-top:12px;font-size:15px;line-height:1.5;color:var(--text)">' + esc(a.bio) + '</p>' : '') +
+      myEventsView() +
       '<h2 class="section">Socials &amp; music</h2>' +
       '<div class="grid2" style="margin-top:12px">' + socials + '</div>' +
       '<h2 class="section">Portfolio</h2>' +
-      '<div class="grid2" style="margin-top:12px">' +
-        '<div><div class="vid" style="background:radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#39FF14">' + PLAY + '</div><div style="margin-top:6px;font-size:14px;font-weight:600">Live at the loft</div><div style="font-size:13px;color:var(--mute)">Video</div></div>' +
-        '<div><div class="vid" style="background:radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#FF3B1F">' + PLAY + '</div><div style="margin-top:6px;font-size:14px;font-weight:600">Rooftop session</div><div style="font-size:13px;color:var(--mute)">Video</div></div>' +
-        '<div class="audio"><div style="width:40px;height:40px;border-radius:20px;background:var(--accent);color:var(--ink);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 001.5.86l10.5-6.5a1 1 0 000-1.72L9.5 4.64A1 1 0 008 5.5z"/></svg></div>' +
-          '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600">Demo reel</div><div class="bars">' + bars + '</div></div>' +
-          '<div style="font-size:13px;color:var(--mute)">Audio</div></div>' +
+      '<div class="grid2" style="margin-top:12px">' + portfolio +
         '<button class="dashed" style="min-height:64px">+ Add video</button>' +
         '<button class="dashed" style="min-height:64px">+ Add audio</button>' +
-      '</div>' + resetLink() + '</div></div>';
+      '</div>' + signOutLink() + '</div></div>';
 }
 
 function venueProfileView() {
-  var photos = [
-    'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#FFFFFF',
-    'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#FF1F8E',
-    'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#39FF14',
-    'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#FFF200',
-    'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#00E5FF'
-  ].map(function (b) { return '<div class="photo" style="background:' + b + '"></div>'; }).join('');
+  var v = api.me.venue;
+  var pills = function (list, solid) {
+    return (list || []).map(function (x) { return '<span class="pill' + (solid ? ' solid' : '') + '">' + esc(solid ? (TYPE_LABEL[x] || x) : x) + '</span>'; }).join('');
+  };
+  var PHOTO_BG = ['#FFFFFF', '#FF1F8E', '#39FF14', '#FFF200', '#00E5FF'];
+  var photos = api.me.media.filter(function (m) { return m.kind === 'photo'; }).map(function (m, i) {
+    return '<div class="photo" style="background:radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,' + PHOTO_BG[i % PHOTO_BG.length] + '"></div>';
+  }).join('');
 
   return '<div class="scroll noscroll" style="padding-bottom:28px" data-keep="venue-profile">' + wallStickers('venue-profile') +
     '<div class="cover" style="background:radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#FFFFFF"></div>' +
     '<div style="padding:0 20px">' +
       '<div class="avatar" style="border-radius:22px">' + icon(IC.building, 38, 1.8) + '</div>' +
-      '<h1 class="display" style="margin-top:12px;font-size:28px;font-weight:700;letter-spacing:-0.6px">The Corner Stage</h1>' +
-      '<p style="margin-top:4px;font-size:15px;color:var(--mute)">Live room &amp; bar</p>' +
-      '<p style="margin-top:12px;font-size:15px;line-height:1.5;color:var(--text)">[About the venue: the vibe, the crowd, what nights you book.]</p>' +
+      '<h1 class="display" style="margin-top:12px;font-size:28px;font-weight:700;letter-spacing:-0.6px">' + esc(v.name) + '</h1>' +
+      '<p style="margin-top:4px;font-size:15px;color:var(--mute)">' + esc([v.kind, v.town].filter(Boolean).join(' · ')) + '</p>' +
+      (v.about ? '<p style="margin-top:12px;font-size:15px;line-height:1.5;color:var(--text)">' + esc(v.about) + '</p>' : '') +
+      myEventsView() +
       '<h2 class="section">Photos</h2>' +
       '<div class="grid3" style="margin-top:12px">' + photos +
         '<button class="dashed photo" aria-label="Add photo" style="display:flex;align-items:center;justify-content:center">' + icon(IC.plus, 26) + '</button></div>' +
       '<h2 class="section">Stage &amp; sound</h2>' +
-      '<div class="wrap" style="margin-top:12px"><span class="pill">Stage</span><span class="pill">PA system</span><span class="pill">Backline</span><span class="pill">DJ booth</span></div>' +
+      '<div class="wrap" style="margin-top:12px">' + (pills(v.equipment) || '<p class="sub" style="margin:0;font-size:14px">Nothing listed yet.</p>') + '</div>' +
       '<h2 class="section">What we book</h2>' +
-      '<div class="wrap" style="margin-top:12px"><span class="pill solid">DJ</span><span class="pill solid">Band</span><span class="pill solid">Solo musician</span><span class="pill solid">Singer</span></div>' +
-      resetLink() +
+      '<div class="wrap" style="margin-top:12px">' + pills(v.books, true) + '</div>' +
+      signOutLink() +
     '</div></div>';
 }
 
-function resetLink() {
-  return '<div style="margin-top:28px;text-align:center"><button class="link" data-act="reset">Reset demo data</button></div>';
+function signOutLink() {
+  return '<div style="margin-top:28px;text-align:center"><p class="sub" style="margin:0;font-size:13px">Signed in as ' + esc(api.me.email) + '</p>' +
+    '<button class="link" data-act="signOut">Sign out</button></div>';
+}
+
+// "My events": upcoming bookings, past events, and what's still waiting.
+// Rows look like the map's area list (.spot + .tag).
+function myEventsView() {
+  var isVenue = state.role === 'venue';
+  var ev = state.events || [];
+  var upcoming = ev.filter(function (e) { return e.kind === 'booking' && !e.is_past; });
+  var past = ev.filter(function (e) { return e.kind === 'booking' && e.is_past; }).reverse();   // newest first
+  var waiting = ev.filter(function (e) { return e.kind === (isVenue ? 'open_gig' : 'application'); });
+
+  function row(e, dot, tag, tagClass) {
+    var title = e.kind === 'open_gig' ? TYPE_LABEL[e.act_type] + ' wanted'
+      : (isVenue ? e.artist_name : e.venue_name);
+    var where = isVenue ? '' : ' · ' + e.venue_town;
+    return '<div class="spot"><i class="dot" style="background:' + dot + '"></i>' +
+      '<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:700">' + esc(title) + '</div>' +
+      '<div style="font-size:13px;color:var(--mute)">' + esc(api.whenText(e.starts_at)) + esc(where) + ' · ' + esc(api.payText(e.pay_cents)) + '</div></div>' +
+      '<span class="tag' + (tagClass ? ' ' + tagClass : '') + '">' + tag + '</span></div>';
+  }
+  function list(rows, empty) {
+    return '<div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">' +
+      (rows.length ? rows.join('') : '<p class="sub" style="margin:0;font-size:14px">' + empty + '</p>') + '</div>';
+  }
+  return '<h2 class="section">Upcoming</h2>' +
+    list(upcoming.map(function (e) { return row(e, 'var(--teal)', 'Booked', 'live'); }),
+      isVenue ? 'No artists booked yet. Book one from an open gig.' : 'No bookings yet. Apply to gigs in the Gigs tab.') +
+    '<h2 class="section">' + (isVenue ? 'Open gigs' : 'Waiting to hear back') + '</h2>' +
+    list(waiting.map(function (e) {
+      return isVenue ? row(e, 'var(--accent)', plural(e.applicant_count, 'applicant'), 'open') : row(e, 'var(--hi)', 'Applied', '');
+    }), isVenue ? 'No open gigs. Post one in the Gigs tab.' : 'Nothing pending.') +
+    '<h2 class="section">Past events</h2>' +
+    list(past.map(function (e) { return row(e, 'var(--s3)', isVenue ? 'Hosted' : 'Played', ''); }),
+      'Nothing yet. Shows you play or host will show up here.');
 }
 
 function sheetView() {
@@ -1408,7 +1431,7 @@ function reviewSheet(g) {
       '<button class="btn sm" data-act="book" data-id="' + g.id + '" data-val="' + a.id + '" aria-label="' + W.book + ' with ' + esc(a.name) + '">' + W.book + '</button></div>';
     return '<div class="person"><div style="display:flex;align-items:center;gap:12px">' +
       '<div class="initials" style="background:' + a.bg + '" aria-hidden="true">' + esc(initials(a.name)) + '</div>' +
-      '<div style="min-width:0"><div style="font-size:16px;font-weight:700">' + esc(a.name) + (a.id === 'me' ? ' <span style="font-size:12px;font-weight:600;color:var(--mute)">(you, from the Artist side)</span>' : '') + '</div>' +
+      '<div style="min-width:0"><div style="font-size:16px;font-weight:700">' + esc(a.name) + (a.id === 'me' ? ' <span style="font-size:12px;font-weight:600;color:var(--mute)">(you)</span>' : '') + '</div>' +
       '<div style="font-size:14px;color:var(--mute)">' + esc(a.line) + ' · ' + esc(a.where) + '</div></div></div>' +
       actions + '</div>';
   }).join('');
@@ -1420,7 +1443,7 @@ function reviewSheet(g) {
     : esc(bookedWho.name) + ' is booked for this gig. The other applicants will see the spot is filled.';
   var empty = c
     ? 'No replies yet. Musicians in range will see your post on the Musicians board.'
-    : 'No one has applied yet. To try it, switch to <b>Artist</b> at the top and apply to this gig.';
+    : 'No one has applied yet. Artists in range will see it in Gigs near you.';
 
   return '<h2 id="sheet-title" tabindex="-1" class="display" style="font-size:24px;font-weight:700;letter-spacing:-0.5px">' + title + '</h2>' +
     '<p style="margin-top:4px;font-size:14px;color:var(--mute)">' + meta + ' · <b style="color:var(--accent-ink)">' + esc(g.pay) + '</b></p>' +
@@ -1433,12 +1456,90 @@ function reviewSheet(g) {
     cancelBtn('Done');
 }
 
+// ---------------------------------------------------------------
+// Signing in, and making your artist or venue profile
+// ---------------------------------------------------------------
+var STYLES = ['Rock', 'Country', 'Jazz', 'Soul', 'Blues', 'House', 'Acoustic', 'Indie rock', 'Folk', 'Standards'];
+var GEAR = ['Stage', 'PA system', 'Backline', 'DJ booth'];
+
+// a text field; what you type is kept in state.fields so a re-render doesn't wipe it
+function input(key, label, type, placeholder, autocomplete) {
+  var v = state.fields[key] || '';
+  var tag = type === 'textarea'
+    ? '<textarea class="inp" id="f-' + key + '" data-field="' + key + '" placeholder="' + esc(placeholder || '') + '">' + esc(v) + '</textarea>'
+    : '<input class="inp" id="f-' + key + '" data-field="' + key + '" type="' + type + '" value="' + esc(v) + '" placeholder="' + esc(placeholder || '') + '"' +
+      (autocomplete ? ' autocomplete="' + autocomplete + '"' : '') + '>';
+  return '<label class="label" for="f-' + key + '" style="display:block;margin-top:16px">' + label + '</label>' + tag;
+}
+// chips: one choice (multi = false) or several (multi = true), kept in state.picks
+function picks(key, label, options, multi, labelFor) {
+  var cur = state.picks[key];
+  var chips = options.map(function (o) {
+    var on = multi ? (cur || []).indexOf(o) >= 0 : cur === o;
+    return chip(labelFor ? labelFor(o) : o, on, 'data-act="pick" data-key="' + key + '" data-val="' + esc(o) + '"' + (multi ? ' data-multi="1"' : ''));
+  }).join('');
+  return '<div class="label" id="lbl-' + key + '" style="margin-top:16px">' + label + '</div>' +
+    '<div class="wrap" role="group" aria-labelledby="lbl-' + key + '" style="margin-top:8px">' + chips + '</div>';
+}
+
+function gateView() {
+  var up = state.authMode === 'signup';
+  return '<div class="scroll noscroll pad" data-keep="gate">' + wallStickers('gate') +
+    '<h1 class="title display ransom">' + ransom(up ? 'Join Stagecall' : 'Welcome back') + '</h1>' +
+    '<p class="hand" style="margin-top:6px">Gigs for local artists &amp; venues.</p>' +
+    '<div class="seg wide" role="group" aria-label="Sign in or create an account" style="margin-top:20px">' +
+      '<button class="' + (!up ? 'on' : '') + '" aria-pressed="' + !up + '" data-act="authMode" data-val="signin">Sign in</button>' +
+      '<button class="' + (up ? 'on' : '') + '" aria-pressed="' + up + '" data-act="authMode" data-val="signup">Create account</button>' +
+    '</div>' +
+    (up ? picks('role', 'I’M A', ['artist', 'venue'], false, function (r) { return r === 'artist' ? 'Artist / band' : 'Venue'; }) : '') +
+    input('email', 'EMAIL', 'email', 'you@example.com', 'email') +
+    input('password', 'PASSWORD', 'password', up ? 'At least 8 characters' : '', up ? 'new-password' : 'current-password') +
+    '<button class="btn" style="margin-top:22px;min-height:52px;border-radius:26px;font-size:17px" data-act="' + (up ? 'signUp' : 'signIn') + '"' + (state.busy ? ' disabled' : '') + '>' +
+      (state.busy ? 'One sec…' : (up ? 'Create account' : 'Sign in')) + '</button>' +
+    '</div>';
+}
+
+function profileSetupView() {
+  var venue = state.role === 'venue';
+  var form = venue
+    ? input('name', 'VENUE NAME', 'text', 'e.g. The Corner Stage') +
+      input('kind', 'WHAT KIND OF PLACE', 'text', 'e.g. Bar with a small stage') +
+      picks('town', 'TOWN', Object.keys(TOWNS)) +
+      picks('books', 'WE BOOK', ['DJ', 'Band', 'Solo', 'Singer'], true, function (t) { return TYPE_LABEL[t]; }) +
+      picks('equipment', 'STAGE & SOUND', GEAR, true) +
+      input('about', 'ABOUT (OPTIONAL)', 'textarea', 'The vibe, the crowd, what nights you book.')
+    : input('name', 'ARTIST OR BAND NAME', 'text', 'e.g. Mara Voss') +
+      picks('actType', 'WHAT YOU DO', ['DJ', 'Band', 'Solo', 'Singer'], false, function (t) { return TYPE_LABEL[t]; }) +
+      picks('genres', 'STYLES', STYLES, true) +
+      picks('town', 'HOME TOWN', Object.keys(TOWNS)) +
+      input('bio', 'SHORT BIO (OPTIONAL)', 'textarea', 'Who you are, what you play, where you’ve played.');
+  return '<div class="scroll noscroll pad" data-keep="setup">' + wallStickers('gate') +
+    '<h1 class="title display ransom">' + ransom(venue ? 'Your venue' : 'Your act') + '</h1>' +
+    '<p class="hand" style="margin-top:6px">' + (venue ? 'Tell artists about your place.' : 'Tell venues who you are.') + '</p>' +
+    form +
+    '<button class="btn" style="margin-top:22px;min-height:52px;border-radius:26px;font-size:17px" data-act="saveProfile"' + (state.busy ? ' disabled' : '') + '>' +
+      (state.busy ? 'Saving…' : 'Save profile') + '</button>' +
+    '<div style="margin-top:12px;text-align:center"><button class="link" data-act="signOut">Sign out</button></div>' +
+    '</div>';
+}
+
 function tabView(key, label, ic) {
   var on = state.tab === key;
   return '<button class="tab' + (on ? ' on' : '') + '"' + (on ? ' aria-current="page"' : '') + ' data-act="tab" data-val="' + key + '">' + icon(ic, 24) + label + '</button>';
 }
 
 function view() {
+  // not signed in yet, or no profile yet: just the header and that screen (no tabs)
+  if (state.auth !== 'ready') {
+    var gate = state.auth === 'signedOut' ? gateView()
+      : state.auth === 'profile' ? profileSetupView()
+      : '<div class="pad"><p class="sub">' + (window.api ? 'Loading…' : 'Stagecall needs an internet connection to load. Check your connection and refresh.') + '</p></div>';
+    var gateKey = 'gate/' + state.auth + '/' + state.authMode;
+    var gateEnter = gateKey !== lastScreen;   // animate only on arrival, not when a chip is tapped
+    lastScreen = gateKey;
+    return headerView() + '<main class="content' + (gateEnter ? ' enter' : '') + '">' + gate + '</main>' +
+      (state.toast ? '<div class="toast' + (fresh.toast ? ' slap' : '') + '" aria-hidden="true">' + esc(state.toast) + '</div>' : '');
+  }
   var isVenue = state.role === 'venue';
   var screen = '';
   if (state.tab === 'gigs') screen = isVenue ? venueGigsView() : artistGigsView();
@@ -1515,11 +1616,72 @@ function closeSheet() {
   focusNext = sheetOpener;
 }
 
+// ---------------------------------------------------------------
+// Talking to the database. Every change: save it, reload what the
+// screens show, then re-render. If the save fails, nothing changes on
+// screen and a toast says why.
+// ---------------------------------------------------------------
+
+// Load everything for the signed-in account into state (and HOME / ME)
+function refresh() {
+  return api.loadAll().then(function (d) {
+    state.gigs = d.gigs;
+    POOL = d.pool;
+    state.applied = d.applied;
+    state.bookings = d.bookings;
+    state.declined = d.declined;
+    return api.myEvents();
+  }).then(function (events) { state.events = events; });
+}
+
+// After sign-in: who are you, do you have a profile yet, then load the app
+function enterApp() {
+  return api.loadMe().then(function (me) {
+    state.role = me.role === 'venue' ? 'venue' : 'artist';
+    var place = state.role === 'venue' ? me.venue : me.artist;
+    if (!place) { state.auth = 'profile'; state.fields = { name: me.displayName || '' }; state.picks = {}; return; }
+    HOME.name = HOME_TOWN = place.town || HOME.name;
+    if (place.lat != null) { HOME.lat = place.lat; HOME.lng = place.lng; }
+    var SOCIAL_KEY = { instagram: 'ig', youtube: 'yt', spotify: 'sp', soundcloud: 'sc' };
+    state.linked = {};
+    me.socials.forEach(function (p) { state.linked[SOCIAL_KEY[p]] = true; });
+    if (me.artist) {
+      ME.name = me.artist.name;
+      ME.line = TYPE_LABEL[me.artist.act_type] + (me.artist.genres.length ? ' · ' + me.artist.genres.join(' & ') : '');
+    }
+    if (state.role === 'venue' && state.filter === 'Mine') state.filter = 'All';
+    return refresh().then(function () { state.auth = 'ready'; });
+  });
+}
+
+function failed(e) {
+  var msg = (e && (e.message || e.error_description)) || String(e);
+  if (/Invalid login credentials/i.test(msg)) msg = 'That email and password don’t match. Try again.';
+  if (/already registered/i.test(msg)) msg = 'There’s already an account with that email. Sign in instead.';
+  showToast(msg);
+}
+
+// run a database change; ok() runs after the reload and may show a toast
+function save_(promise, ok) {
+  state.busy = true;
+  render();
+  promise
+    .then(refresh)
+    .then(function () { state.busy = false; if (ok) ok(); render(); })
+    .catch(function (e) { state.busy = false; failed(e); render(); });
+}
+
+// applicant ids in the app: 'me' is your own artist
+function artistIdOf(val) { return val === 'me' ? api.me.artist.id : val; }
+
+// data-changing actions are ignored while a save is running (no double posts)
+var DATA_ACTS = ['signIn', 'signUp', 'saveProfile', 'post', 'postCollab', 'apply', 'book', 'unbook', 'decline', 'undecline'];
+
 function act(name, el) {
   var val = el.dataset.val;
   var id = el.dataset.id;
+  if (state.busy && DATA_ACTS.indexOf(name) >= 0) return;
   switch (name) {
-    case 'role': state.role = val; if (state.filter === 'Mine' && val === 'venue') state.filter = 'All'; break;
     case 'tab': state.tab = val; break;
     case 'mode': state.reelMode = val; break;
     case 'filter': state.filter = val; break;
@@ -1530,85 +1692,121 @@ function act(name, el) {
     case 'collabFilter': state.collabFilter = val; break;
     case 'openSheet': state.form = defaultForm(); openSheet({ kind: 'post', type: val }, el); break;
     case 'openCollab': state.form = defaultCollabForm(); openSheet({ kind: 'collab' }, el); break;
-    case 'postCollab': {
-      var cf = state.form;
-      var cid = 'c' + Date.now();
-      // Sample replies so the review step can be tried; real replies would come from other accounts.
-      var replies = (RESPONDERS[cf.want] || []).map(function (r) { return Object.assign({}, r); });
-      state.gigs.push({
-        id: cid, kind: 'collab', mine: true,
-        venue: ME.name, byLine: ME.line, bg: ME.bg,
-        type: cf.want, purpose: cf.purpose, when: cf.date, pay: cf.pay,
-        genre: cf.genre, reach: cf.reach, town: HOME.name, lat: HOME.lat, lng: HOME.lng, dist: '0 mi', note: '',
-        responders: replies
-      });
-      closeSheet();
-      focusNext = 'review||' + cid + '|';
-      showToast('Posted. ' + (replies.length === 1 ? '1 musician is' : replies.length + ' musicians are') + ' interested (sample replies).');
-      break;
-    }
     case 'review': openSheet({ kind: 'review', id: id }, el); break;
     case 'closeSheet': closeSheet(); break;
     case 'form': state.form[el.dataset.key] = val; break;
-    case 'book': {
-      var who = findApplicant(id, val);
-      state.bookings[id] = val;
-      var name = who ? who.name : 'the artist';
-      if (isCollab(findGig(id))) showToast('Teaming up with ' + name + '.');
-      else showToast('Booked ' + name + '.' + (val === 'me' ? ' Switch to Artist to see it.' : ''));
-      focusNext = 'unbook||' + id + '|';
+
+    // --- signing in ---
+    case 'authMode': state.authMode = val; break;
+    case 'pick': {
+      var key = el.dataset.key;
+      if (el.dataset.multi) {
+        var list = (state.picks[key] || []).slice();
+        var at = list.indexOf(val);
+        if (at >= 0) list.splice(at, 1); else list.push(val);
+        state.picks[key] = list;
+      } else state.picks[key] = val;
       break;
     }
-    case 'unbook': {
-      var prev = state.bookings[id];
-      delete state.bookings[id];
-      focusNext = 'book|' + prev + '|' + id + '|';
-      break;
-    }
-    case 'decline': state.declined[id + ':' + val] = true; focusNext = 'undecline|' + val + '|' + id + '|'; break;
-    case 'undecline': delete state.declined[id + ':' + val]; focusNext = 'decline|' + val + '|' + id + '|'; break;
-    case 'reset':
-      try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ }
-      location.reload();
+    case 'signIn':
+    case 'signUp': {
+      var email = (state.fields.email || '').trim(), password = state.fields.password || '';
+      if (!email || !password) { showToast('Enter your email and password.'); break; }
+      if (name === 'signUp' && !state.picks.role) { showToast('Pick Artist / band or Venue.'); break; }
+      if (name === 'signUp' && password.length < 8) { showToast('Use at least 8 characters for your password.'); break; }
+      state.busy = true;
+      render();
+      (name === 'signIn' ? api.signIn(email, password) : api.signUp(email, password, state.picks.role, ''))
+        .then(enterApp)
+        .then(function () { state.busy = false; state.toast = ''; if (state.auth === 'ready') { state.fields = {}; state.picks = {}; } render(); })
+        .catch(function (e) { state.busy = false; failed(e); render(); });
       return;
+    }
+    case 'saveProfile': {
+      var f = state.fields, p = state.picks;
+      var name_ = (f.name || '').trim();
+      if (!name_) { showToast('Add a name.'); break; }
+      if (state.role === 'artist' && !p.actType) { showToast('Pick what you do: DJ, band, solo or singer.'); break; }
+      if (!p.town) { showToast('Pick your town.'); break; }
+      if (state.role === 'venue' && !(p.books || []).length) { showToast('Pick at least one kind of act you book.'); break; }
+      state.busy = true;
+      render();
+      (state.role === 'venue'
+        ? api.createVenue({ name: name_, kind: (f.kind || '').trim(), about: (f.about || '').trim(), town: p.town, books: p.books, equipment: p.equipment || [] })
+        : api.createArtist({ name: name_, actType: p.actType, genres: p.genres || [], bio: (f.bio || '').trim(), town: p.town }))
+        .then(enterApp)
+        .then(function () { state.busy = false; state.fields = {}; state.picks = {}; state.tab = 'gigs'; showToast('Profile saved. Welcome to Stagecall!'); render(); })
+        .catch(function (e) { state.busy = false; failed(e); render(); });
+      return;
+    }
+    case 'signOut':
+      api.signOut().then(function () { location.reload(); });
+      return;
+
+    // --- venue gigs ---
     case 'post': {
-      var f = state.form;
-      var newId = 'n' + Date.now();
-      state.gigs.unshift({
-        id: newId,
-        venue: 'The Corner Stage',
-        type: state.sheet.type,
-        when: f.date + ' · ' + f.time,
-        pay: f.pay,
-        genre: f.genre,
-        reach: f.reach,
-        travel: f.travel === 'None' ? '' : f.travel,
-        town: HOME.name, lat: 36.0660, lng: -94.1608,   // The Corner Stage, Dickson St
-        mine: true,
-        applicants: 0
+      var type = state.sheet.type, form = state.form;
+      save_(api.postGig(type, form), function () {
+        closeSheet();
+        var mine = state.gigs.filter(function (g) { return g.mine && !isCollab(g); });
+        var newest = mine[mine.length - 1];
+        if (newest) focusNext = 'review||' + newest.id + '|';
+        showToast('Gig posted. Artists in range will see it now.');
       });
-      withDist(state.gigs[0]);
-      closeSheet();
-      focusNext = 'review||' + newId + '|';
-      showToast('Gig posted. Switch to Artist to see how it looks.');
-      break;
+      return;
     }
     case 'apply': {
       var gig = findGig(id);
+      var collab = gig && isCollab(gig);
       if (state.applied[id]) {
-        delete state.applied[id];
-        delete state.declined[id + ':me'];
-        showToast(gig && isCollab(gig) ? 'Interest taken back.' : 'Application withdrawn.');
-      } else if (gig && isCollab(gig)) {
-        state.applied[id] = true;
-        showToast('Sent ' + gig.venue + ' your profile. They’ll see you’re interested.');
+        save_(collab ? api.unreply(id) : api.withdraw(id), function () {
+          showToast(collab ? 'Interest taken back.' : 'Application withdrawn.');
+        });
       } else {
-        state.applied[id] = true;
-        // gigs "you" posted as the venue can be reviewed on the Venue side
-        if (gig) showToast('Applied to ' + gig.venue + '.' + (gig.mine ? ' Switch to Venue to review it.' : ''));
+        save_(collab ? api.reply(id) : api.apply(id), function () {
+          showToast(collab ? 'Sent ' + gig.venue + ' your profile. They’ll see you’re interested.' : 'Applied to ' + (gig ? gig.venue : 'the gig') + '.');
+        });
       }
-      break;
+      return;
     }
+    case 'book': {
+      var who = findApplicant(id, val);
+      var isC = isCollab(findGig(id));
+      save_(isC ? api.teamUp(id, artistIdOf(val)) : api.book(id, artistIdOf(val)), function () {
+        var nm = who ? who.name : 'the artist';
+        showToast(isC ? 'Teaming up with ' + nm + '.' : 'Booked ' + nm + '.');
+        focusNext = 'unbook||' + id + '|';
+      });
+      return;
+    }
+    case 'unbook': {
+      var prev = state.bookings[id];
+      save_(isCollab(findGig(id)) ? api.undoTeamUp(id) : api.cancelBooking(id), function () {
+        focusNext = 'book|' + prev + '|' + id + '|';
+      });
+      return;
+    }
+    case 'decline':
+    case 'undecline': {
+      var status = name === 'decline' ? 'declined' : 'applied';
+      save_((isCollab(findGig(id)) ? api.setReply : api.setApplication)(id, artistIdOf(val), status), function () {
+        focusNext = (name === 'decline' ? 'undecline|' : 'decline|') + val + '|' + id + '|';
+      });
+      return;
+    }
+
+    // --- Musicians board ---
+    case 'postCollab': {
+      save_(api.postCollab(state.form), function () {
+        closeSheet();
+        var mine = state.gigs.filter(function (g) { return g.mine && isCollab(g); });
+        if (mine[0]) focusNext = 'review||' + mine[0].id + '|';
+        showToast('Posted. Musicians in range will see it on the board.');
+      });
+      return;
+    }
+
+    // --- Reels and socials: still sample data in this browser (uploads come later) ---
     case 'like': state.liked[id] = !state.liked[id]; if (state.liked[id]) fresh.liked = id; break;
     case 'cta': {
       var reel = REELS.filter(function (r) { return r.id === id; })[0];
@@ -1623,6 +1821,18 @@ function act(name, el) {
   }
   render();
 }
+
+// typing in a form field: remember it without re-rendering (so focus stays put)
+root.addEventListener('input', function (e) {
+  var el = e.target.closest('[data-field]');
+  if (el) state.fields[el.dataset.field] = el.value;
+});
+// Enter in the sign-in form submits it
+root.addEventListener('keydown', function (e) {
+  if (e.key !== 'Enter' || !e.target.matches('input[data-field]')) return;
+  var btn = root.querySelector('[data-act="signIn"], [data-act="signUp"]');
+  if (btn) { e.preventDefault(); act(btn.dataset.act, btn); }
+});
 
 root.addEventListener('click', function (e) {
   var el = e.target.closest('[data-act]');
@@ -1651,6 +1861,15 @@ document.addEventListener('keydown', function (e) {
 
 load();
 render();
+if (window.api) {
+  api.session()
+    .then(function (session) {
+      if (!session) { state.auth = 'signedOut'; return; }
+      return enterApp();
+    })
+    .catch(function (e) { state.auth = 'signedOut'; failed(e); })
+    .then(render);
+}
 </script>
 </body>
 </html>

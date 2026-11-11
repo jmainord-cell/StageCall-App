@@ -9,33 +9,36 @@ A clickable prototype of a gig marketplace for musicians, DJs, singers, and venu
 - **Map** is a real, zoomable map of Arkansas (home is Fayetteville). Open gigs are amber and live shows are teal (a live show is a gig where an artist is booked). Zoomed out you see one bubble per town with counts; zoom in, or tap a town, to see a pin for each venue, and tap a pin for details. Dashed rings mark 15 and 75 mi from you. The layers button switches between **Dark** and **Streets**. Booking an artist in the app turns that gig into a live show on the map.
 - **Reels** is a scrolling feed to discover artists (video) and venues (photos).
 - **Profiles**: artists get a portfolio and linkable socials; venues get a photo grid and stage details.
+- **Accounts**: sign up as an artist or a venue (email + password), then create your profile (name, what you do or book, styles, town). **Profile → My events** shows your upcoming bookings, past events, and what's still waiting (your applications, or your open gigs and how many applied).
 
-Everything is sample data. There is no backend, accounts, or real uploads yet. What you do is saved in this browser (localStorage) so a refresh keeps it; **Profile → Reset demo data** starts over.
+Everything is stored in a Supabase database (see [`db/`](db/README.md)); `api.js` holds every database call. Reels, likes and the social-link buttons are still sample data in this browser until uploads are built.
 
-## Demo the full flow (about 1 minute)
+## Demo the full flow (about 2 minutes)
 
-1. **Venue** → tap **Band** → set pay and travel (the preview updates) → **Post gig**.
-2. Switch to **Artist** → **Apply** to "The Corner Stage" gigs.
-3. Switch to **Venue** → tap **Singer wanted** → you'll see two sample applicants plus yourself → **Book** one.
-4. Switch to **Artist** → that gig now says "You're booked" or "Not selected this time".
-5. Still as **Artist**, tap **Musicians** at the top → **Post what you're looking for** → pick **Band** → **Post**. Two sample bands reply; tap your post and **Team up** with one. You can also tap **I'm interested** on a band's "Looking for a singer" post.
+Two demo accounts come with history: **Mara Voss** (artist, `mara-voss@example.com`) and **The Corner Stage** (venue, `corner-stage@example.com`). They share one demo password; ask the backend owner for it (it isn't kept in the repo). Use two browsers (or a normal and a private window) to be both at once.
 
-The Musicians board has no table in `db/` yet. It needs either artist-posted gigs or a separate posts table plus a "responses" table (see `applications`).
+1. As **Mara**: **Profile** shows 1 upcoming show and 2 past ones. In **Gigs**, **Apply** to The Corner Stage's Singer gig.
+2. As **The Corner Stage**: **Gigs** → tap **Singer wanted** → Mara is there → **Book** her (or **Decline**, then **Undo**).
+3. As **Mara**: refresh. The gig now says "You're booked", and it's under **Upcoming** in Profile.
+4. As **Mara**, tap **Musicians** → **I'm interested** on The Loose Ends' "Looking for a singer" post, or **Post what you need**.
+5. Or **Create account** to start fresh as a new artist or venue.
+
+Sample dates drift into the past after a few days; before a demo, run `db/refresh_sample_dates.sql` (see `db/README.md`).
 
 ## Accessibility
 
 - Every control is a real button with a visible focus ring, so the whole app works with a keyboard.
-- Toggles (chips, Venue/Artist, likes) report on/off to screen readers; the current tab is marked.
+- Toggles (chips, likes) report on/off to screen readers; the current tab is marked. Form fields have visible labels.
 - Sheets are dialogs: focus moves into them, the page behind is inert, **Esc** closes, and focus returns to the button that opened it.
 - Confirmations ("Booked June Harlow.") are announced through a live region.
 
 ## Run it
 
-Open `index.html` in a browser. No build step and nothing to install. It loads two Google Fonts and [Leaflet](https://leafletjs.com) (the open-source map library) from the web, and the map tiles come from Esri's free basemaps, so the Map tab needs an internet connection (everything else works offline). No API keys are needed.
+Serve the folder and open it, for example `python3 -m http.server` then http://localhost:8000. No build step and nothing to install. It loads Google Fonts, [Leaflet](https://leafletjs.com) (the map), and [supabase-js](https://supabase.com/docs/reference/javascript) (the database) from the web, so it needs an internet connection. The Supabase anon key in `api.js` is public by design; the database's row-level security protects the data.
 
 ## Put it on GitHub Pages
 
-1. Create a repo and add these files (`index.html`, `README.md`).
+1. Create a repo and add these files (`index.html`, `api.js`, `README.md`).
 2. In the repo go to **Settings → Pages**.
 3. Set **Source** to "Deploy from a branch", choose `main` and `/ (root)`, and save.
 4. After a minute the site is live at `https://<your-username>.github.io/<repo-name>/`.
@@ -50,10 +53,10 @@ All in `index.html`:
 - It's meant to look handmade: ink outlines wobble slightly (an SVG "rough" filter in `<body>`), and each flyer's tilt, tape, or push pin comes from its id (`paper()`), so no two hang the same way.
 - Motion: flyers lift off the wall on hover, buttons press like stamps, stickers wiggle, confirmations slap on, sheets slide up like paper, and cards pin themselves up when a screen opens. Hover effects only run with a mouse, and everything switches off when the device asks for reduced motion.
 - `RANGE_MILES` sets how many miles "My town", "My region", and "Statewide" cover.
-- `HOME` is where "you" are (Fayetteville). Each sample gig has a `town`, `lat` and `lng`, and distances are worked out from those (straight-line miles), so moving a venue on the map also changes its distance in Gigs.
-- `TOWNS` lists the towns used for the map's town bubbles and the **By area** list. Add a town here if you give a gig a new `town`.
-- `state.gigs` and `REELS` hold the sample gigs and reels.
+- `HOME` is where "you" are: your profile's town, set when you sign in. Distances are worked out from each venue's `lat` and `lng` (straight-line miles).
+- `TOWNS` lists the towns you can pick on your profile, and the map's town bubbles and **By area** list. Add a town here (with its center) to offer it.
+- `REELS` holds the sample reels. Gigs, applicants, bookings and the Musicians board come from the database through `api.js`.
 
 ## Not built yet
 
-Accounts and login, real uploads (video, audio, photos), messaging, payments and deposits, and a fan/listener role. The app does not use a database yet; the schema for one is in [`db/`](db/README.md) (Supabase/PostgreSQL), ready to connect. **To hook the UI up to it, start with [`BACKEND_SETUP.md`](BACKEND_SETUP.md)**: every button and the database call it needs, field conversions, updated sample locations, and what the schema doesn't cover yet.
+Real uploads (video, audio, photos) and Reels from the database, editing your profile after sign-up, messaging, payments and deposits, and a fan/listener role. The database is in [`db/`](db/README.md); [`BACKEND_SETUP.md`](BACKEND_SETUP.md) is the original UI-to-database handoff.
