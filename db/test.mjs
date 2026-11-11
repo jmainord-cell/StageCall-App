@@ -62,7 +62,7 @@ const counts = (await db.query(`select
   (select count(*) from artists)::int a, (select count(*) from gigs)::int g,
   (select count(*) from media where in_reels)::int r`)).rows[0];
 check('signup trigger made 4 profiles', counts.p === 4, JSON.stringify(counts));
-check('10 venues, 6 artists, 10 gigs, 7 reels', counts.v === 10 && counts.a === 6 && counts.g === 10 && counts.r === 7, JSON.stringify(counts));
+check('10 venues, 6 artists, 14 gigs (10 from the app + 4 history), 7 reels', counts.v === 10 && counts.a === 6 && counts.g === 14 && counts.r === 7, JSON.stringify(counts));
 
 // --- Arkansas locations (HOME and venue miles from BACKEND_SETUP.md section 6) ---
 const HOME = [36.0626, -94.1574];
@@ -78,11 +78,19 @@ check('Mara Voss lives at HOME (Fayetteville)', mara.lat === HOME[0] && mara.lng
 // --- Live shows: the 4 sample bookings (state.bookings in index.html) ---
 const live = (await db.query(`select v.name venue, a.name artist, g.status::text, b.agreed_pay_cents = g.pay_cents same_pay,
   (select status::text from applications x where x.gig_id = g.id and x.artist_id = a.id) app
-  from bookings b join gigs g on g.id = b.gig_id join venues v on v.id = g.venue_id join artists a on a.id = b.artist_id order by v.name`)).rows;
+  from bookings b join gigs g on g.id = b.gig_id join venues v on v.id = g.venue_id join artists a on a.id = b.artist_id
+  where g.id <= '30000000-0000-0000-0000-000000000010' order by v.name`)).rows;
 check('4 sample live shows: Brick & Barrel, Depot Taproom, Lakeside Lodge, Rusty Anchor',
   live.map(r => r.venue + '=' + r.artist).join(', ') === 'Brick & Barrel=Brass Tacks Trio, Depot Taproom=DJ Kestrel, Lakeside Lodge=Eli Park, The Rusty Anchor=The Loose Ends',
   live.map(r => r.venue + '=' + r.artist).join(', '));
 check('each live show: gig filled, pay copied, application accepted', live.every(r => r.status === 'filled' && r.same_pay && r.app === 'accepted'));
+const hist = (await db.query(`select v.name venue, a.name artist, g.status::text s, b.payment_status::text p, g.starts_at < now() past
+  from bookings b join gigs g on g.id = b.gig_id join venues v on v.id = g.venue_id join artists a on a.id = b.artist_id
+  where g.id > '30000000-0000-0000-0000-000000000010' order by g.starts_at`)).rows;
+check('history: 3 past shows (completed, paid) and 1 upcoming',
+  hist.map(r => `${r.venue}=${r.artist}:${r.past ? 'past' : 'upcoming'}:${r.s}:${r.p}`).join(', ') ===
+  'The Corner Stage=Mara Voss:past:completed:paid, The Corner Stage=Eli Park:past:completed:paid, Café Lune=Mara Voss:past:completed:paid, The Corner Stage=Mara Voss:upcoming:filled:unpaid',
+  hist.map(r => `${r.venue}=${r.artist}:${r.past ? 'past' : 'upcoming'}`).join(', '));
 const future = (await db.query(`select count(*)::int n from gigs where status = 'open' and starts_at <= now()`)).rows[0].n;
 check('every open sample gig is in the future', future === 0, `past=${future}`);
 const roles = (await db.query(`select role::text from profiles where id = $1`, [CORNER])).rows[0].role;
@@ -118,11 +126,12 @@ check('Kestrel (Fort Smith) / Statewide = 3: venue Town/Region limits respected'
 check('Kestrel / Statewide / DJ only = 1 (Velvet Room)', (await reach(KESTREL, 'Statewide', 'DJ')).map(r => r.venue_name).join() === 'Velvet Room');
 
 // --- Live shows on the map (public view over private bookings) ---
-const LIVE4 = 'Brick & Barrel=Brass Tacks Trio, Depot Taproom=DJ Kestrel, Lakeside Lodge=Eli Park, The Rusty Anchor=The Loose Ends';
+// the app's 4 live shows + Mara's upcoming show at The Corner Stage (sample history)
+const LIVE4 = 'Brick & Barrel=Brass Tacks Trio, Depot Taproom=DJ Kestrel, Lakeside Lodge=Eli Park, The Corner Stage=Mara Voss, The Rusty Anchor=The Loose Ends';
 const liveNames = async () => (await db.query(`select venue_name, artist_name from live_shows`)).rows
   .map(r => r.venue_name + '=' + r.artist_name).sort().join(', ');
 await as(null);
-check('anon sees the 4 live shows for the map', (await liveNames()) === LIVE4, await liveNames());
+check('anon sees the 5 upcoming live shows for the map (past ones are not shown)', (await liveNames()) === LIVE4, await liveNames());
 const liveCols = (await db.query(`select * from live_shows limit 1`)).fields.map(f => f.name);
 check('live shows expose no pay or payment details', !liveCols.some(c => /pay|deposit|payment/.test(c)), liveCols.join(', '));
 check('anon still cannot read the bookings table', (await db.query(`select * from bookings`)).rows.length === 0);
@@ -143,7 +152,7 @@ await db.exec(readFileSync(new URL('refresh_sample_dates.sql', DB), 'utf8'));
 const refreshed = (await db.query(`select id, starts_at from gigs order by id`)).rows;
 check('refresh sets the same dates as seed.sql', JSON.stringify(seeded) === JSON.stringify(refreshed));
 const counts3 = [(await reach(MARA_ARTIST, 'Town')).length, (await reach(MARA_ARTIST, 'Region')).length, (await reach(MARA_ARTIST, 'Statewide')).length];
-check('after refresh: Mara 4 / 5 / 6 and 4 live shows', counts3.join('/') === '4/5/6' && (await liveNames()) === LIVE4, counts3.join('/'));
+check('after refresh: Mara 4 / 5 / 6 and the same 5 live shows', counts3.join('/') === '4/5/6' && (await liveNames()) === LIVE4, counts3.join('/'));
 
 // --- RLS: browsing ---
 await as(null);
@@ -152,25 +161,51 @@ check('anon cannot see bookings', (await db.query(`select * from bookings`)).row
 await asAdmin();
 await db.query(`insert into applications (gig_id, artist_id) values ($1, $2)`, [GIG_RUSTY, ELI]);
 
+// --- My events (Profile tab) ---
+const events = async () => (await db.query(`select * from my_events()`)).rows;
+const fmt = rows => rows.map(r => `${r.kind}/${r.side}/${r.is_past ? 'past' : 'next'}:${r.venue_name}${r.artist_name ? '=' + r.artist_name : ''}`).join(', ');
+await as(MARA);
+let ev = await events();
+check('Mara: 2 past shows, 1 upcoming booking, nothing pending',
+  fmt(ev) === 'booking/artist/past:The Corner Stage=Mara Voss, booking/artist/past:Café Lune=Mara Voss, booking/artist/next:The Corner Stage=Mara Voss', fmt(ev));
+check('Mara sees what she was paid', ev.map(r => r.pay_cents).join() === '18000,12000,20000');
+await as(CORNER);
+ev = await events();
+check('Corner Stage: 2 past shows, 1 upcoming, 1 open gig with 0 applicants',
+  fmt(ev.filter(r => r.kind === 'booking')) === 'booking/venue/past:The Corner Stage=Mara Voss, booking/venue/past:The Corner Stage=Eli Park, booking/venue/next:The Corner Stage=Mara Voss'
+  && ev.filter(r => r.kind === 'open_gig').map(r => r.gig_id + ':' + r.applicant_count).join() === GIG_CORNER + ':0', fmt(ev));
+await as(SAMPLE_ART);
+check("other accounts don't see Mara's events", !(await events()).some(r => r.artist_name === 'Mara Voss'));
+await as(null);
+await expectError('signed-out visitors have no events', `select * from my_events()`);
+
 // --- RLS: applying ---
 await as(MARA);
 await db.query(`insert into applications (gig_id, artist_id) values ($1, $2)`, [GIG_CORNER, MARA_ARTIST]);
 check('Mara can apply as her own act', true);
 await expectError('Mara cannot apply as DJ Kestrel', `insert into applications (gig_id, artist_id) values ($1, $2)`, [GIG_CORNER, KESTREL]);
-check("Mara cannot see other artists' applications", (await db.query(`select * from applications`)).rows.length === 1);
+const maraApps = (await db.query(`select artist_id from applications`)).rows;
+check("Mara sees only her own applications (1 new + 3 from her bookings)", maraApps.length === 4 && maraApps.every(r => r.artist_id === MARA_ARTIST), `n=${maraApps.length}`);
 await expectError('Mara cannot accept her own application',
-  `update applications set status = 'accepted' where artist_id = $1`, [MARA_ARTIST]);
+  `update applications set status = 'accepted' where gig_id = $1 and artist_id = $2`, [GIG_CORNER, MARA_ARTIST]);
 await expectError('Mara cannot move her application to another gig',
   `update applications set gig_id = $1 where artist_id = $2`, [GIG_RUSTY, MARA_ARTIST]);
-await db.query(`update applications set status = 'withdrawn' where artist_id = $1`, [MARA_ARTIST]);
-await db.query(`update applications set status = 'applied' where artist_id = $1`, [MARA_ARTIST]);
+await db.query(`update applications set status = 'withdrawn' where gig_id = $1 and artist_id = $2`, [GIG_CORNER, MARA_ARTIST]);
+await db.query(`update applications set status = 'applied' where gig_id = $1 and artist_id = $2`, [GIG_CORNER, MARA_ARTIST]);
 check('Mara can withdraw and re-apply', true);
 
 // --- RLS: venue side ---
 await as(CORNER);
 const cards = (await db.query(`select applicant_count::int n from gig_cards where id = $1`, [GIG_CORNER])).rows[0];
 check('venue sees applicant count on its gig', cards.n === 1, `n=${cards.n}`);
-check("Corner Stage can't see applications to other venues' gigs", (await db.query(`select * from applications`)).rows.length === 1);
+check('My events: Corner Stage open gig now shows 1 applicant',
+  (await events()).find(r => r.kind === 'open_gig' && r.gig_id === GIG_CORNER)?.applicant_count === 1);
+await as(MARA);
+check('My events: Mara sees her pending application', (await events()).some(r => r.kind === 'application' && r.gig_id === GIG_CORNER));
+await as(CORNER);
+const cornerApps = (await db.query(`select x.gig_id from applications x join gigs g on g.id = x.gig_id
+  where g.venue_id <> '10000000-0000-0000-0000-000000000001'`)).rows;
+check("Corner Stage can't see applications to other venues' gigs", cornerApps.length === 0, `n=${cornerApps.length}`);
 
 // --- Book in one step, undo booking, undo decline ---
 // Corner Stage's gig: Mara applied; Eli and Kestrel apply too.
@@ -226,7 +261,7 @@ const undone = await appStatus();
 check('cancel_booking: booking gone, gig open, Eli back to applied, Kestrel still declined',
   JSON.stringify(await gigState()) === '{"s":"open","n":0}' && undone['Eli Park'] === 'applied' && undone['DJ Kestrel'] === 'declined' && undone['Mara Voss'] === 'applied', JSON.stringify(undone));
 await as(null);
-check('the undone booking leaves the map', !(await liveNames()).includes('The Corner Stage'));
+check('the undone booking leaves the map', !(await liveNames()).includes('The Corner Stage=Eli Park'));
 const anonExec = (await db.query(`select has_function_privilege('anon', 'book_artist(uuid, uuid)', 'execute') b,
   has_function_privilege('anon', 'cancel_booking(uuid)', 'execute') c`)).rows[0];
 check('signed-out visitors cannot call book_artist or cancel_booking', !anonExec.b && !anonExec.c, JSON.stringify(anonExec));
@@ -246,7 +281,8 @@ await expectError("Corner Stage can't post a gig as Velvet Room",
 await db.query(`insert into bookings (gig_id, artist_id, agreed_pay_cents) values ($1, $2, 18000)`, [GIG_CORNER, MARA_ARTIST]);
 check('venue can book the accepted artist', true);
 await as(MARA);
-check('artist can see her booking', (await db.query(`select * from bookings`)).rows.length === 1);
+const maraBookings = (await db.query(`select artist_id from bookings`)).rows;
+check('artist sees her bookings and no one else\'s', maraBookings.length === 4 && maraBookings.every(r => r.artist_id === MARA_ARTIST), `n=${maraBookings.length}`);
 
 // --- Musicians board ---
 const C1 = '40000000-0000-0000-0000-000000000001';   // The Loose Ends want a singer

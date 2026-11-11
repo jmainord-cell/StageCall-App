@@ -1,11 +1,11 @@
 -- ---------------------------------------------------------------
 -- Refresh the sample gig dates before a demo.
 --
--- seed.sql dates the 10 sample gigs relative to the day it ran ("Fri" =
+-- seed.sql dates the 14 sample gigs relative to the day it ran ("Fri" =
 -- next Friday, "Tonight" = today). After a few days some are in the past:
 -- open gigs drop out of "Gigs near you" and live shows drop off the map.
 -- This moves them forward again with the same rules as seed.sql. It only
--- changes starts_at on the 10 sample gigs; nothing else is touched.
+-- changes starts_at on the 14 sample gigs; nothing else is touched.
 --
 --   supabase db query --remote=<project ref> --file db/refresh_sample_dates.sql --yes
 --
@@ -21,7 +21,7 @@ $$;
 create or replace function pg_temp.at_local(p_day date, p_time time) returns timestamptz
 language sql stable as $$ select (p_day + p_time) at time zone 'America/Chicago' $$;
 
-update gigs g set starts_at = pg_temp.at_local(coalesce(pg_temp.next_day(d.isodow), (now() at time zone 'America/Chicago')::date), d.at)
+update gigs g set starts_at = pg_temp.at_local(coalesce(pg_temp.next_day(d.isodow), (now() at time zone 'America/Chicago')::date) + sh.shift, d.at)
 from (values
   ('30000000-0000-0000-0000-000000000001'::uuid, 5,    time '20:00'),  -- The Corner Stage, Fri 8 PM
   ('30000000-0000-0000-0000-000000000002'::uuid, null, time '21:00'),  -- The Rusty Anchor, tonight 9 PM
@@ -32,6 +32,16 @@ from (values
   ('30000000-0000-0000-0000-000000000007'::uuid, 6,    time '21:00'),  -- The Grain Elevator, Sat 9 PM
   ('30000000-0000-0000-0000-000000000008'::uuid, 5,    time '18:00'),  -- Lakeside Lodge, Fri 6 PM
   ('30000000-0000-0000-0000-000000000009'::uuid, 6,    time '22:00'),  -- Depot Taproom, Sat 10 PM
-  ('30000000-0000-0000-0000-000000000010'::uuid, 7,    time '14:00')   -- County Fair Stage, Sun 2 PM
+  ('30000000-0000-0000-0000-000000000010'::uuid, 7,    time '14:00'),  -- County Fair Stage, Sun 2 PM
+  ('30000000-0000-0000-0000-000000000011'::uuid, 5,    time '20:00'),  -- past: Corner Stage <- Mara (Fri, 4 weeks back)
+  ('30000000-0000-0000-0000-000000000012'::uuid, 6,    time '19:00'),  -- past: Café Lune <- Mara (Sat, 2 weeks back)
+  ('30000000-0000-0000-0000-000000000013'::uuid, 7,    time '18:00'),  -- past: Corner Stage <- Eli (Sun, 3 weeks back)
+  ('30000000-0000-0000-0000-000000000014'::uuid, 5,    time '20:00')   -- upcoming: Corner Stage <- Mara (Fri after next)
 ) as d(id, isodow, at)
+cross join lateral (select case d.id
+  when '30000000-0000-0000-0000-000000000011' then -28
+  when '30000000-0000-0000-0000-000000000012' then -14
+  when '30000000-0000-0000-0000-000000000013' then -21
+  when '30000000-0000-0000-0000-000000000014' then 7
+  else 0 end as shift) sh
 where g.id = d.id;

@@ -87,10 +87,16 @@ insert into gigs (id, venue_id, act_type, starts_at, pay_cents, genre, reach, tr
   ('30000000-0000-0000-0000-000000000007', '10000000-0000-0000-0000-000000000007', 'Band',   pg_temp.at_local(pg_temp.next_day(6), '21:00'), 45000, 'Country',   'Region',    'Gas'),
   ('30000000-0000-0000-0000-000000000008', '10000000-0000-0000-0000-000000000008', 'Solo',   pg_temp.at_local(pg_temp.next_day(5), '18:00'), 20000, 'Acoustic',  'Statewide', 'Gas + room'),
   ('30000000-0000-0000-0000-000000000009', '10000000-0000-0000-0000-000000000009', 'DJ',     pg_temp.at_local(pg_temp.next_day(6), '22:00'), 35000, 'House',     'Statewide', 'Gas + room'),
-  ('30000000-0000-0000-0000-000000000010', '10000000-0000-0000-0000-000000000010', 'Band',   pg_temp.at_local(pg_temp.next_day(7), '14:00'), 60000, 'Country',   'Statewide', 'Lodging');
+  ('30000000-0000-0000-0000-000000000010', '10000000-0000-0000-0000-000000000010', 'Band',   pg_temp.at_local(pg_temp.next_day(7), '14:00'), 60000, 'Country',   'Statewide', 'Lodging'),
+  -- History for "My events" (not in index.html's sample list): 3 past shows and 1 upcoming
+  ('30000000-0000-0000-0000-000000000011', '10000000-0000-0000-0000-000000000001', 'Singer', pg_temp.at_local(pg_temp.next_day(5) - 28, '20:00'), 18000, 'Jazz',      'Region',    'None'),
+  ('30000000-0000-0000-0000-000000000012', '10000000-0000-0000-0000-000000000004', 'Singer', pg_temp.at_local(pg_temp.next_day(6) - 14, '19:00'), 12000, 'Standards', 'Town',      'None'),
+  ('30000000-0000-0000-0000-000000000013', '10000000-0000-0000-0000-000000000001', 'Solo',   pg_temp.at_local(pg_temp.next_day(7) - 21, '18:00'), 15000, 'Acoustic',  'Town',      'None'),
+  ('30000000-0000-0000-0000-000000000014', '10000000-0000-0000-0000-000000000001', 'Singer', pg_temp.at_local(pg_temp.next_day(5) + 7,  '20:00'), 20000, 'Soul',      'Region',    'None');
 
 -- ---------------------------------------------------------------
--- Live shows (state.bookings in index.html): 4 gigs already booked.
+-- Live shows (state.bookings in index.html): 4 gigs already booked,
+-- plus the "My events" history above (3 past, 1 upcoming).
 -- Each booked artist has an accepted application, the gig is filled,
 -- and it no longer shows up in "Gigs near you".
 -- ---------------------------------------------------------------
@@ -98,7 +104,11 @@ insert into applications (gig_id, artist_id, status) values
   ('30000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000003', 'accepted'),  -- Rusty Anchor   <- The Loose Ends
   ('30000000-0000-0000-0000-000000000006', '20000000-0000-0000-0000-000000000005', 'accepted'),  -- Brick & Barrel <- Brass Tacks Trio
   ('30000000-0000-0000-0000-000000000008', '20000000-0000-0000-0000-000000000004', 'accepted'),  -- Lakeside Lodge <- Eli Park
-  ('30000000-0000-0000-0000-000000000009', '20000000-0000-0000-0000-000000000002', 'accepted');  -- Depot Taproom  <- DJ Kestrel
+  ('30000000-0000-0000-0000-000000000009', '20000000-0000-0000-0000-000000000002', 'accepted'),  -- Depot Taproom  <- DJ Kestrel
+  ('30000000-0000-0000-0000-000000000011', '20000000-0000-0000-0000-000000000001', 'accepted'),  -- past: Corner Stage <- Mara Voss
+  ('30000000-0000-0000-0000-000000000012', '20000000-0000-0000-0000-000000000001', 'accepted'),  -- past: Café Lune    <- Mara Voss
+  ('30000000-0000-0000-0000-000000000013', '20000000-0000-0000-0000-000000000004', 'accepted'),  -- past: Corner Stage <- Eli Park
+  ('30000000-0000-0000-0000-000000000014', '20000000-0000-0000-0000-000000000001', 'accepted');  -- upcoming: Corner Stage <- Mara Voss
 
 insert into bookings (gig_id, artist_id, agreed_pay_cents)
 select a.gig_id, a.artist_id, g.pay_cents
@@ -106,6 +116,11 @@ from applications a join gigs g on g.id = a.gig_id
 where a.status = 'accepted';
 
 update gigs set status = 'filled' where id in (select gig_id from bookings);
+-- the 3 past shows happened
+update gigs set status = 'completed' where id in ('30000000-0000-0000-0000-000000000011',
+  '30000000-0000-0000-0000-000000000012', '30000000-0000-0000-0000-000000000013');
+update bookings set payment_status = 'paid' where gig_id in ('30000000-0000-0000-0000-000000000011',
+  '30000000-0000-0000-0000-000000000012', '30000000-0000-0000-0000-000000000013');
 
 -- ---------------------------------------------------------------
 -- Musicians board (c1-c5 in state.gigs in index.html). Each post sits
