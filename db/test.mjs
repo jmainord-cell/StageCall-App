@@ -151,6 +151,9 @@ check('with stale dates, gigs and live shows disappear',
 await db.exec(readFileSync(new URL('refresh_sample_dates.sql', DB), 'utf8'));
 const refreshed = (await db.query(`select id, starts_at from gigs order by id`)).rows;
 check('refresh sets the same dates as seed.sql', JSON.stringify(seeded) === JSON.stringify(refreshed));
+const canRefresh = (await db.query(`select has_function_privilege('anon', 'private.refresh_sample_dates()', 'execute') a,
+  has_function_privilege('authenticated', 'private.refresh_sample_dates()', 'execute') b`)).rows[0];
+check('only the database itself can run the daily refresh', !canRefresh.a && !canRefresh.b, JSON.stringify(canRefresh));
 const counts3 = [(await reach(MARA_ARTIST, 'Town')).length, (await reach(MARA_ARTIST, 'Region')).length, (await reach(MARA_ARTIST, 'Statewide')).length];
 check('after refresh: Mara 4 / 5 / 6 and the same 5 live shows', counts3.join('/') === '4/5/6' && (await liveNames()) === LIVE4, counts3.join('/'));
 

@@ -23,7 +23,7 @@ Two demo accounts come with history: **Mara Voss** (artist, `mara-voss@example.c
 4. As **Mara**, tap **Musicians** → **I'm interested** on The Loose Ends' "Looking for a singer" post, or **Post what you need**.
 5. Or **Create account** to start fresh as a new artist or venue.
 
-Sample dates drift into the past after a few days; before a demo, run `db/refresh_sample_dates.sql` (see `db/README.md`).
+The sample gigs move themselves to the coming Fri / Sat / Sun every night at 3 AM (a scheduled job in Supabase, see `db/schedule.sql`), so the demo is always current.
 
 ## Accessibility
 

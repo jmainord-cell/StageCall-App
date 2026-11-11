@@ -7,8 +7,9 @@ PostgreSQL schema for Stagecall, written for [Supabase](https://supabase.com) (f
 | `schema.sql` | Tables, types, the distance functions, and the `gig_cards` view |
 | `policies.sql` | Row-level security (who can read and write what), the sign-up trigger, and the application rules |
 | `seed.sql` | Sample data matching the prototype: 10 venues in real Arkansas towns (home is Fayetteville), 5 artists, 14 gigs (4 booked as the app's live shows, plus 3 past shows and 1 upcoming booking for "My events"), 7 reels |
-| `test.mjs` | 115 automated checks run against real Postgres |
-| `refresh_sample_dates.sql` | Moves the sample gigs back to next Fri / Sat / Sun before a demo (only their dates change). Run with `supabase db query --remote=<project ref> --file db/refresh_sample_dates.sql --yes`. |
+| `test.mjs` | 116 automated checks run against real Postgres |
+| `refresh_sample_dates.sql` | Creates `private.refresh_sample_dates()`, which moves the sample gigs back to the coming Fri / Sat / Sun (only their dates change), and runs it once. |
+| `schedule.sql` | Supabase only: runs that refresh automatically every day at 09:00 UTC (3 AM in Arkansas) with `pg_cron`, so the demo never goes stale. |
 | `storage.sql` | File uploads: the public `media` bucket (50 MB, video/audio/image only) and rules that let you add or delete files only in your own folder. Supabase only; run after `policies.sql`. |
 | `migrations/` | Upgrades for the live database, applied in number order. A fresh setup doesn't need them: `schema.sql` and `policies.sql` already include every change. |
 
