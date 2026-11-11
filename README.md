@@ -1,6 +1,8 @@
 # Stagecall (prototype)
 
-**Open the app:** https://jmainord-cell.github.io/StageCall-App/
+**Open the app:** https://jalmanza12.github.io/StageCall-App/ (the version with accounts and the database, from the `feature/backend-db` branch)
+
+After the pull request is merged into `main`, the team site https://jmainord-cell.github.io/StageCall-App/ shows the same version.
 
 A clickable prototype of a gig marketplace for musicians, DJs, singers, and venues, built for small towns and whole states, not just big cities.
 
