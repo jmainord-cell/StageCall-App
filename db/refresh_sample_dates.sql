@@ -1,0 +1,60 @@
+-- ---------------------------------------------------------------
+-- Keep the sample gig dates current.
+--
+-- seed.sql dates the 14 sample gigs relative to the day it ran ("Fri" =
+-- next Friday, "Tonight" = today). After a few days some are in the past:
+-- open gigs drop out of "Gigs near you" and live shows drop off the map.
+-- private.refresh_sample_dates() moves them forward again with the same
+-- rules as seed.sql. It only changes starts_at on the 14 sample gigs;
+-- nothing else is touched.
+--
+-- Running this file (re)creates the function and refreshes right away:
+--   supabase db query --remote=<project ref> --file db/refresh_sample_dates.sql --yes
+-- On Supabase, db/schedule.sql runs it automatically every day.
+--
+-- Keep the day/time list in step with seed.sql (test.mjs checks this).
+-- ---------------------------------------------------------------
+
+-- Next given weekday (1 = Mon ... 7 = Sun) strictly after today, Arkansas time.
+create or replace function private.next_day(p_isodow int) returns date
+language sql stable set search_path = '' as $$
+  select (now() at time zone 'America/Chicago')::date
+       + ((p_isodow - extract(isodow from (now() at time zone 'America/Chicago'))::int + 6) % 7 + 1)
+$$;
+create or replace function private.at_local(p_day date, p_time time) returns timestamptz
+language sql stable set search_path = '' as $$ select (p_day + p_time) at time zone 'America/Chicago' $$;
+
+create or replace function private.refresh_sample_dates() returns void
+language sql set search_path = public as $$
+  update gigs g set starts_at = private.at_local(coalesce(private.next_day(d.isodow), (now() at time zone 'America/Chicago')::date) + sh.shift, d.at)
+  from (values
+    ('30000000-0000-0000-0000-000000000001'::uuid, 5,    time '20:00'),  -- The Corner Stage, Fri 8 PM
+    ('30000000-0000-0000-0000-000000000002'::uuid, null, time '21:00'),  -- The Rusty Anchor, tonight 9 PM
+    ('30000000-0000-0000-0000-000000000003'::uuid, 5,    time '22:00'),  -- Velvet Room, Fri 10 PM
+    ('30000000-0000-0000-0000-000000000004'::uuid, 6,    time '19:00'),  -- Café Lune, Sat 7 PM
+    ('30000000-0000-0000-0000-000000000005'::uuid, 6,    time '20:00'),  -- Harbor House, Sat 8 PM
+    ('30000000-0000-0000-0000-000000000006'::uuid, 7,    time '16:00'),  -- Brick & Barrel, Sun 4 PM
+    ('30000000-0000-0000-0000-000000000007'::uuid, 6,    time '21:00'),  -- The Grain Elevator, Sat 9 PM
+    ('30000000-0000-0000-0000-000000000008'::uuid, 5,    time '18:00'),  -- Lakeside Lodge, Fri 6 PM
+    ('30000000-0000-0000-0000-000000000009'::uuid, 6,    time '22:00'),  -- Depot Taproom, Sat 10 PM
+    ('30000000-0000-0000-0000-000000000010'::uuid, 7,    time '14:00'),  -- County Fair Stage, Sun 2 PM
+    ('30000000-0000-0000-0000-000000000011'::uuid, 5,    time '20:00'),  -- past: Corner Stage <- Mara (Fri, 4 weeks back)
+    ('30000000-0000-0000-0000-000000000012'::uuid, 6,    time '19:00'),  -- past: Café Lune <- Mara (Sat, 2 weeks back)
+    ('30000000-0000-0000-0000-000000000013'::uuid, 7,    time '18:00'),  -- past: Corner Stage <- Eli (Sun, 3 weeks back)
+    ('30000000-0000-0000-0000-000000000014'::uuid, 5,    time '20:00')   -- upcoming: Corner Stage <- Mara (Fri after next)
+  ) as d(id, isodow, at)
+  cross join lateral (select case d.id
+    when '30000000-0000-0000-0000-000000000011' then -28
+    when '30000000-0000-0000-0000-000000000012' then -14
+    when '30000000-0000-0000-0000-000000000013' then -21
+    when '30000000-0000-0000-0000-000000000014' then 7
+    else 0 end as shift) sh
+  where g.id = d.id;
+$$;
+
+-- Only the database itself (and the daily schedule) runs these.
+revoke execute on function private.next_day(int) from public, anon, authenticated;
+revoke execute on function private.at_local(date, time) from public, anon, authenticated;
+revoke execute on function private.refresh_sample_dates() from public, anon, authenticated;
+
+select private.refresh_sample_dates();
