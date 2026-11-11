@@ -177,6 +177,9 @@ h2.section { margin-top: 28px; font-family: var(--display); font-weight: 400; fo
 .bars { margin-top: 6px; display: flex; align-items: flex-end; gap: 3px; height: 20px; }
 .bars i { width: 3px; border-radius: 1px; background: var(--ink); }
 .photo { height: 104px; border-radius: 3px; border: 2px solid var(--ink); }
+/* uploaded media: fills the reel / tile it sits in */
+.reel-media { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.media-full { display: block; width: 100%; max-height: 60vh; margin-top: 16px; border: 2px solid var(--ink); border-radius: 3px; background: var(--ink); object-fit: contain; }
 .pill { padding: 6px 10px; border-radius: 4px; background: var(--s1); border: 2px solid var(--ink); font-family: var(--mono); font-size: 12px; font-weight: 700; text-transform: uppercase; }
 .pill.solid { background: var(--hi); }
 .wrap { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -520,15 +523,6 @@ var THUMBS = [
   'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#FF1F8E'
 ];
 
-var REELS = [
-  { id: 'a1', kind: 'artist', name: 'Mara Voss', line: 'Singer · Jazz & soul', where: '12 mi away', caption: 'Late set at the loft.', bg: 'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#00E5FF' },
-  { id: 'a2', kind: 'artist', name: 'DJ Kestrel', line: 'DJ · House', where: '55 mi away', caption: 'Two hours of warm-up grooves.', bg: 'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#39FF14' },
-  { id: 'a3', kind: 'artist', name: 'The Loose Ends', line: 'Band · Indie rock', where: '90 mi away', caption: 'Four-piece, own PA, happy to travel.', bg: 'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#FF3B1F' },
-  { id: 'a4', kind: 'artist', name: 'Eli Park', line: 'Solo musician · Acoustic', where: '4 mi away', caption: 'Songs for a patio crowd.', bg: 'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#FFF200' },
-  { id: 'v1', kind: 'venue', name: 'The Rusty Anchor', line: 'Bar with a small stage', where: '1 mi away', caption: 'Stage and PA provided. Bands Thursday to Saturday.', bg: 'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#FFFFFF' },
-  { id: 'v2', kind: 'venue', name: 'Velvet Room', line: 'Club · DJ booth', where: '2 mi away', caption: 'Late nights, dance floor, DJ booth with monitors.', bg: 'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#FF1F8E' },
-  { id: 'v3', kind: 'venue', name: 'Café Lune', line: 'Café · Acoustic corner', where: '38 mi away', caption: 'Weekend evenings, small crowd, good listening room.', bg: 'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#39FF14' }
-];
 
 // "You" as an artist. Filled in from your artist profile after you sign in.
 var ME = { id: 'me', name: '', line: '', where: '', bg: 'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,#00E5FF' };
@@ -619,7 +613,11 @@ var state = {
   applied: {},
   liked: {},
   invited: {},
-  linked: {},             // linked socials, loaded from your profile
+  linked: {},             // your social links: 'ig' -> url, loaded from your profile
+  reels: [],              // the Reels feed, from the database
+  following: {},          // artist id -> true
+  saved: {},              // venue id -> true
+  upload: {},             // the upload sheet: chosen file's name, size, type
   // gig id -> booked applicant id ('me' = you, the artist). Booked venue gigs are the "live shows" on the map.
   bookings: {},
   mapFilter: 'all',       // 'all' | 'open' | 'live'
@@ -640,7 +638,7 @@ var state = {
 state.gigs.forEach(withDist);
 
 var SAVE_KEY = 'stagecall-v6';
-var SAVED = ['tab', 'reelMode', 'filter', 'range', 'gigsView', 'collabFilter', 'mapFilter', 'mapTown', 'mapStyle', 'liked', 'invited'];
+var SAVED = ['tab', 'reelMode', 'filter', 'range', 'gigsView', 'collabFilter', 'mapFilter', 'mapTown', 'mapStyle'];
 function save() {
   try {
     var out = {};
@@ -1208,30 +1206,37 @@ function mapView() {
 function reelsView() {
   var isVenue = state.role === 'venue';
   var want = state.reelMode === 'artists' ? 'artist' : 'venue';
-  var cards = REELS.filter(function (r) { return r.kind === want; }).map(function (r) {
+  var cards = state.reels.filter(function (r) { return r.kind === want; }).map(function (r) {
     var liked = !!state.liked[r.id];
-    var done = !!state.invited[r.id];
-    var base, after;
+    var done, base, after;
     if (r.kind === 'artist') {
+      done = isVenue ? !!state.invited[r.ownerId] : !!state.following[r.ownerId];
       base = isVenue ? 'Invite to a gig' : 'Follow';
       after = isVenue ? 'Invite sent' : 'Following';
     } else {
+      done = !!state.saved[r.ownerId];
       base = 'Save venue';
       after = 'Venue saved';
     }
-    return '<div class="reel" style="background:' + r.bg + '">' +
-      '<div class="reel-center">' + (r.kind === 'artist' ? '<div class="play">' + PLAY + '</div>' : icon(IC.building, 72, 1.4)) + '</div>' +
-      '<div class="kind">' + (r.kind === 'artist' ? 'VIDEO' : 'PHOTOS') + '</div>' +
+    // an uploaded video plays silently on a loop; a photo fills the card; sample reels keep their color
+    var media = !r.url ? '' : r.mediaKind === 'photo'
+      ? '<img class="reel-media" src="' + esc(r.url) + '" alt="' + esc(r.caption || r.name) + '">'
+      : r.mediaKind === 'video' ? '<video class="reel-media" src="' + esc(r.url) + '" autoplay muted loop playsinline aria-label="' + esc(r.caption || r.name) + '"></video>' : '';
+    var center = r.url && r.mediaKind !== 'audio' ? '' : '<div class="reel-center">' + (r.mediaKind === 'photo' ? icon(IC.building, 72, 1.4) : '<div class="play">' + PLAY + '</div>') + '</div>';
+    return '<div class="reel" style="background:' + r.bg + '">' + media + center +
+      '<div class="kind">' + (r.mediaKind === 'photo' ? 'PHOTOS' : r.mediaKind === 'audio' ? 'AUDIO' : 'VIDEO') + '</div>' +
       '<div class="reel-info">' +
         '<div class="name display">' + esc(r.name) + '</div>' +
         '<div style="font-size:14px;font-weight:600">' + esc(r.line) + ' · ' + esc(r.where) + '</div>' +
         '<div style="font-size:14px;line-height:1.4;color:var(--mute)">' + esc(r.caption) + '</div>' +
-        '<button class="reel-cta' + (done ? ' done' : '') + '" data-act="cta" data-id="' + r.id + '">' + (done ? after : base) + '</button>' +
+        (r.url && r.mediaKind === 'audio' ? '<audio controls src="' + esc(r.url) + '" style="width:100%"></audio>' : '') +
+        (r.mine ? '<div class="status">Your reel</div>' : '<button class="reel-cta' + (done ? ' done' : '') + '" data-act="cta" data-id="' + r.id + '"' + (done && isVenue && r.kind === 'artist' ? ' disabled' : '') + '>' + (done ? after : base) + '</button>') +
       '</div>' +
       '<button class="heart' + (liked ? ' on' : '') + (fresh.liked === r.id ? ' pop' : '') + '" aria-label="Like ' + esc(r.name) + '" aria-pressed="' + liked + '" data-act="like" data-id="' + r.id + '">' + heart(liked) + '</button>' +
       '</div>';
   }).join('');
 
+  if (!cards) cards = '<div class="pad"><p class="sub" style="margin-top:70px">No reels yet. Add a video or photos on your Profile and choose Show in Reels.</p></div>';
   return '<div style="position:absolute;inset:0">' +
     '<div class="reels noscroll" data-keep="reels">' + cards + '</div>' +
     '<div class="reel-mode"><div class="seg" role="group" aria-label="Show reels from">' +
@@ -1244,20 +1249,24 @@ function artistProfileView() {
   var a = api.me.artist;
   var socials = SOCIALS.map(function (d) {
     var on = !!state.linked[d.k];
-    return '<button class="social' + (on ? ' on' : '') + '" data-act="social" data-val="' + d.k + '">' + (on ? d.label + ' · Linked' : '+ Link ' + d.label) + '</button>';
+    return '<button class="social' + (on ? ' on' : '') + '" data-act="openSocial" data-val="' + d.k + '">' + (on ? d.label + ' · Linked' : '+ Link ' + d.label) + '</button>';
   }).join('');
   var heights = [8, 16, 11, 20, 13, 18, 9, 15, 20, 12, 17, 8, 14, 19, 10, 16];
   var bars = heights.map(function (h) { return '<i style="height:' + h + 'px"></i>'; }).join('');
   // your videos and audio (same tiles as before; the files themselves come with uploads)
   var VID_BG = ['#39FF14', '#FF3B1F', '#00E5FF', '#FFF200'];
+  var TILE = 'padding:0;border:0;background:none;color:inherit;font:inherit;text-align:left';
   var portfolio = api.me.media.filter(function (m) { return m.kind !== 'photo'; }).map(function (m, i) {
     if (m.kind === 'audio') {
-      return '<div class="audio"><div style="width:40px;height:40px;border-radius:20px;background:var(--accent);color:var(--ink);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 001.5.86l10.5-6.5a1 1 0 000-1.72L9.5 4.64A1 1 0 008 5.5z"/></svg></div>' +
+      return '<button class="audio" data-act="openMedia" data-id="' + m.id + '" style="font:inherit;color:var(--ink);text-align:left" aria-label="Open ' + esc(m.title || 'audio') + '"><div style="width:40px;height:40px;border-radius:20px;background:var(--accent);color:var(--ink);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 001.5.86l10.5-6.5a1 1 0 000-1.72L9.5 4.64A1 1 0 008 5.5z"/></svg></div>' +
         '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600">' + esc(m.title || 'Audio') + '</div><div class="bars">' + bars + '</div></div>' +
-        '<div style="font-size:13px;color:var(--mute)">Audio</div></div>';
+        '<div style="font-size:13px;color:var(--mute)">Audio</div></button>';
     }
-    return '<div><div class="vid" style="background:radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,' + VID_BG[i % VID_BG.length] + '">' + PLAY + '</div>' +
-      '<div style="margin-top:6px;font-size:14px;font-weight:600">' + esc(m.title || 'Video') + '</div><div style="font-size:13px;color:var(--mute)">Video</div></div>';
+    return '<button data-act="openMedia" data-id="' + m.id + '" style="' + TILE + '" aria-label="Open ' + esc(m.title || 'video') + '">' +
+      '<div class="vid" style="position:relative;overflow:hidden;background:radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,' + VID_BG[i % VID_BG.length] + '">' +
+      (m.url ? '<video class="reel-media" src="' + esc(m.url) + '#t=0.5" preload="metadata" muted playsinline aria-hidden="true"></video>' : '') +
+      '<span style="position:relative;display:flex">' + PLAY + '</span></div>' +
+      '<div style="margin-top:6px;font-size:14px;font-weight:600">' + esc(m.title || 'Video') + '</div><div style="font-size:13px;color:var(--mute)">Video</div></button>';
   }).join('');
 
   return '<div class="scroll noscroll" style="padding-bottom:28px" data-keep="artist-profile">' + wallStickers('profile') +
@@ -1273,8 +1282,8 @@ function artistProfileView() {
       '<div class="grid2" style="margin-top:12px">' + socials + '</div>' +
       '<h2 class="section">Portfolio</h2>' +
       '<div class="grid2" style="margin-top:12px">' + portfolio +
-        '<button class="dashed" style="min-height:64px">+ Add video</button>' +
-        '<button class="dashed" style="min-height:64px">+ Add audio</button>' +
+        '<button class="dashed" style="min-height:64px" data-act="openUpload" data-val="video">+ Add video</button>' +
+        '<button class="dashed" style="min-height:64px" data-act="openUpload" data-val="audio">+ Add audio</button>' +
       '</div>' + signOutLink() + '</div></div>';
 }
 
@@ -1285,7 +1294,8 @@ function venueProfileView() {
   };
   var PHOTO_BG = ['#FFFFFF', '#FF1F8E', '#39FF14', '#FFF200', '#00E5FF'];
   var photos = api.me.media.filter(function (m) { return m.kind === 'photo'; }).map(function (m, i) {
-    return '<div class="photo" style="background:radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,' + PHOTO_BG[i % PHOTO_BG.length] + '"></div>';
+    var bg = m.url ? 'url(&quot;' + esc(m.url) + '&quot;) center/cover' : 'radial-gradient(rgba(26,23,20,.18) 1.1px,transparent 1.7px) 0 0/7px 7px,' + PHOTO_BG[i % PHOTO_BG.length];
+    return '<button class="photo" data-act="openMedia" data-id="' + m.id + '" style="background:' + bg + '" aria-label="Open ' + esc(m.title || m.caption || 'photo') + '"></button>';
   }).join('');
 
   return '<div class="scroll noscroll" style="padding-bottom:28px" data-keep="venue-profile">' + wallStickers('venue-profile') +
@@ -1299,7 +1309,7 @@ function venueProfileView() {
       myEventsView() +
       '<h2 class="section">Photos</h2>' +
       '<div class="grid3" style="margin-top:12px">' + photos +
-        '<button class="dashed photo" aria-label="Add photo" style="display:flex;align-items:center;justify-content:center">' + icon(IC.plus, 26) + '</button></div>' +
+        '<button class="dashed photo" aria-label="Add photo" data-act="openUpload" data-val="photo" style="display:flex;align-items:center;justify-content:center">' + icon(IC.plus, 26) + '</button></div>' +
       '<h2 class="section">Stage &amp; sound</h2>' +
       '<div class="wrap" style="margin-top:12px">' + (pills(v.equipment) || '<p class="sub" style="margin:0;font-size:14px">Nothing listed yet.</p>') + '</div>' +
       '<h2 class="section">What we book</h2>' +
@@ -1357,7 +1367,12 @@ function myEventsView() {
 function sheetView() {
   if (!state.sheet) return '';
   var k = state.sheet.kind;
-  var body = k === 'review' ? reviewSheet(findGig(state.sheet.id)) : (k === 'collab' ? collabSheet() : postSheet(state.sheet.type));
+  var body = k === 'review' ? reviewSheet(findGig(state.sheet.id))
+    : k === 'collab' ? collabSheet()
+    : k === 'social' ? socialSheet(state.sheet.platform)
+    : k === 'upload' ? uploadSheet(state.sheet.mediaKind)
+    : k === 'media' ? mediaSheet(state.sheet.id)
+    : postSheet(state.sheet.type);
   return '<div class="overlay' + (fresh.sheet ? ' enter' : '') + '">' +
     '<button class="backdrop" aria-label="Close" tabindex="-1" data-act="closeSheet"></button>' +
     '<div class="sheet noscroll" role="dialog" aria-modal="true" aria-labelledby="sheet-title" data-keep="sheet">' + body + '</div></div>';
@@ -1391,6 +1406,56 @@ function postSheet(type) {
     '</div>' +
     '<button class="btn" style="margin-top:18px;min-height:52px;border-radius:26px;font-size:17px" data-act="post">Post gig</button>' +
     cancelBtn('Cancel');
+}
+
+// Link a social: paste the address of your profile or channel
+function socialSheet(k) {
+  var d = SOCIALS.filter(function (x) { return x.k === k; })[0];
+  var linked = !!state.linked[k];
+  return '<h2 id="sheet-title" tabindex="-1" class="display" style="font-size:24px;font-weight:700;letter-spacing:-0.5px">' + (linked ? '' : 'Link ') + esc(d.label) + '</h2>' +
+    '<p style="margin-top:4px;font-size:14px;color:var(--mute)">Paste the link to your ' + esc(d.label) + ' page. Venues can open it from your profile.</p>' +
+    input('socialUrl', 'LINK', 'url', 'https://…', 'url') +
+    '<button class="btn" style="margin-top:18px;min-height:52px;border-radius:26px;font-size:17px" data-act="saveSocial" data-val="' + k + '"' + (state.busy ? ' disabled' : '') + '>' + (state.busy ? 'Saving…' : 'Save link') + '</button>' +
+    (linked ? '<button class="btn ghost" style="margin-top:10px" data-act="removeSocial" data-val="' + k + '"' + (state.busy ? ' disabled' : '') + '>Remove link</button>' : '') +
+    cancelBtn('Cancel');
+}
+
+// Upload a video, audio track or photo
+var UPLOAD = {
+  video: { label: 'video', accept: 'video/mp4,video/quicktime,video/webm', type: /^video\// },
+  audio: { label: 'audio', accept: 'audio/*', type: /^audio\// },
+  photo: { label: 'photo', accept: 'image/jpeg,image/png,image/webp,image/gif', type: /^image\// }
+};
+var MAX_UPLOAD = 50 * 1024 * 1024;   // Supabase free plan: 50 MB per file
+var pendingFile = null;               // the chosen file (kept outside state: it can't be saved as JSON)
+function uploadSheet(kind) {
+  var u = UPLOAD[kind], chosen = state.upload.name;
+  return '<h2 id="sheet-title" tabindex="-1" class="display" style="font-size:24px;font-weight:700;letter-spacing:-0.5px">Add ' + u.label + '</h2>' +
+    '<p style="margin-top:4px;font-size:14px;color:var(--mute)">Up to 50 MB.' + (kind === 'photo' ? ' JPG, PNG, WebP or GIF.' : kind === 'video' ? ' MP4, MOV or WebM.' : ' MP3, M4A, WAV and similar.') + '</p>' +
+    '<label class="label" for="f-file" style="display:block;margin-top:18px">FILE</label>' +
+    '<input class="inp" id="f-file" type="file" accept="' + u.accept + '" data-file="1" style="padding:10px 14px">' +
+    (chosen ? '<div class="status ok" style="margin-top:10px">' + esc(chosen) + ' · ' + (state.upload.size / 1048576).toFixed(1) + ' MB</div>' : '') +
+    input('mediaTitle', 'TITLE', 'text', kind === 'photo' ? 'e.g. The stage on a Friday' : 'e.g. Live at the loft') +
+    input('mediaCaption', 'CAPTION (OPTIONAL)', 'text', 'One line for Reels') +
+    (kind === 'audio' ? '' : picks('inReels', 'SHOW IN REELS', ['Yes', 'No'])) +
+    '<button class="btn" style="margin-top:18px;min-height:52px;border-radius:26px;font-size:17px" data-act="upload" data-val="' + kind + '"' + (state.busy ? ' disabled' : '') + '>' + (state.busy ? 'Uploading…' : 'Upload') + '</button>' +
+    cancelBtn('Cancel');
+}
+
+// Open one of your own videos, tracks or photos; remove it if you like
+function mediaSheet(id) {
+  var m = api.me.media.filter(function (x) { return x.id === id; })[0];
+  if (!m) return cancelBtn('Close');
+  var player = !m.url ? '<p class="sub" style="font-size:14px">This is sample media from the demo, so there\u2019s no file to play.</p>'
+    : m.kind === 'video' ? '<video class="media-full" src="' + esc(m.url) + '" controls playsinline></video>'
+    : m.kind === 'audio' ? '<audio src="' + esc(m.url) + '" controls style="width:100%;margin-top:16px"></audio>'
+    : '<img class="media-full" src="' + esc(m.url) + '" alt="' + esc(m.title || m.caption || 'Photo') + '">';
+  return '<h2 id="sheet-title" tabindex="-1" class="display" style="font-size:24px;font-weight:700;letter-spacing:-0.5px">' + esc(m.title || (m.kind === 'photo' ? 'Photo' : m.kind === 'audio' ? 'Audio' : 'Video')) + '</h2>' +
+    (m.caption ? '<p style="margin-top:4px;font-size:14px;color:var(--mute)">' + esc(m.caption) + '</p>' : '') +
+    (m.in_reels ? '<div class="status ok" style="margin-top:10px">In Reels</div>' : '') +
+    player +
+    '<button class="btn ghost" style="margin-top:18px" data-act="removeMedia" data-id="' + m.id + '"' + (state.busy ? ' disabled' : '') + '>' + (state.busy ? 'Removing…' : 'Remove') + '</button>' +
+    cancelBtn('Done');
 }
 
 // Musicians board: post what kind of musician you're looking for.
@@ -1631,33 +1696,49 @@ function closeSheet() {
 // screen and a toast says why.
 // ---------------------------------------------------------------
 
-// Load everything for the signed-in account into state (and HOME / ME)
+// Your account -> role, home town, "you" as an artist, your social links
+function applyMe(me) {
+  state.role = me.role === 'venue' ? 'venue' : 'artist';
+  var place = state.role === 'venue' ? me.venue : me.artist;
+  if (place) {
+    HOME.name = HOME_TOWN = place.town || HOME.name;
+    if (place.lat != null) { HOME.lat = place.lat; HOME.lng = place.lng; }
+  }
+  if (me.artist) {
+    ME.name = me.artist.name;
+    ME.line = TYPE_LABEL[me.artist.act_type] + (me.artist.genres.length ? ' · ' + me.artist.genres.join(' & ') : '');
+  }
+  var SOCIAL_KEY = { instagram: 'ig', youtube: 'yt', spotify: 'sp', soundcloud: 'sc' };
+  state.linked = {};
+  me.socials.forEach(function (x) { state.linked[SOCIAL_KEY[x.platform]] = x.url; });
+  return me;
+}
+
+// Load everything for the signed-in account into state
 function refresh() {
-  return api.loadAll().then(function (d) {
+  return api.loadMe().then(applyMe).then(api.loadAll).then(function (d) {
     state.gigs = d.gigs;
     POOL = d.pool;
     state.applied = d.applied;
     state.bookings = d.bookings;
     state.declined = d.declined;
-    return api.myEvents();
-  }).then(function (events) { state.events = events; });
+    return Promise.all([api.myEvents(), api.loadReels()]);
+  }).then(function (r) {
+    state.events = r[0];
+    state.reels = r[1].reels;
+    state.liked = r[1].liked;
+    state.following = r[1].following;
+    state.saved = r[1].saved;
+    state.invited = r[1].invited;
+  });
 }
 
 // After sign-in: who are you, do you have a profile yet, then load the app
 function enterApp() {
   return api.loadMe().then(function (me) {
-    state.role = me.role === 'venue' ? 'venue' : 'artist';
+    applyMe(me);
     var place = state.role === 'venue' ? me.venue : me.artist;
     if (!place) { state.auth = 'profile'; state.fields = { name: me.displayName || '' }; state.picks = {}; return; }
-    HOME.name = HOME_TOWN = place.town || HOME.name;
-    if (place.lat != null) { HOME.lat = place.lat; HOME.lng = place.lng; }
-    var SOCIAL_KEY = { instagram: 'ig', youtube: 'yt', spotify: 'sp', soundcloud: 'sc' };
-    state.linked = {};
-    me.socials.forEach(function (p) { state.linked[SOCIAL_KEY[p]] = true; });
-    if (me.artist) {
-      ME.name = me.artist.name;
-      ME.line = TYPE_LABEL[me.artist.act_type] + (me.artist.genres.length ? ' · ' + me.artist.genres.join(' & ') : '');
-    }
     if (state.role === 'venue' && state.filter === 'Mine') state.filter = 'All';
     return refresh().then(function () { state.auth = 'ready'; });
   });
@@ -1684,7 +1765,8 @@ function save_(promise, ok) {
 function artistIdOf(val) { return val === 'me' ? api.me.artist.id : val; }
 
 // data-changing actions are ignored while a save is running (no double posts)
-var DATA_ACTS = ['signIn', 'signUp', 'saveProfile', 'post', 'postCollab', 'apply', 'book', 'unbook', 'decline', 'undecline'];
+var DATA_ACTS = ['signIn', 'signUp', 'saveProfile', 'post', 'postCollab', 'apply', 'book', 'unbook', 'decline', 'undecline',
+  'like', 'cta', 'saveSocial', 'removeSocial', 'upload', 'removeMedia'];
 
 function act(name, el) {
   var val = el.dataset.val;
@@ -1815,21 +1897,88 @@ function act(name, el) {
       return;
     }
 
-    // --- Reels and socials: still sample data in this browser (uploads come later) ---
-    case 'like': state.liked[id] = !state.liked[id]; if (state.liked[id]) fresh.liked = id; break;
-    case 'cta': {
-      var reel = REELS.filter(function (r) { return r.id === id; })[0];
-      var had = !!state.invited[id];
-      state.invited[id] = !had;
-      if (!had && reel) {
-        showToast(reel.kind === 'venue' ? reel.name + ' saved.' : (state.role === 'venue' ? 'Invite sent to ' + reel.name + '.' : 'Following ' + reel.name + '.'));
-      }
-      break;
+    // --- Reels ---
+    case 'like': {
+      var on = !state.liked[id];
+      save_(api.like(id, on), function () { if (on) fresh.liked = id; });
+      return;
     }
-    case 'social': state.linked[val] = !state.linked[val]; break;
+    case 'cta': {
+      var reel = state.reels.filter(function (r) { return r.id === id; })[0];
+      if (!reel) break;
+      if (reel.kind === 'venue') {
+        var save = !state.saved[reel.ownerId];
+        save_(api.saveVenue(reel.ownerId, save), function () { if (save) showToast(reel.name + ' saved.'); });
+      } else if (state.role === 'venue') {
+        if (state.invited[reel.ownerId]) break;
+        save_(api.invite(reel.ownerId), function () { showToast('Invite sent to ' + reel.name + '.'); });
+      } else {
+        var follow = !state.following[reel.ownerId];
+        save_(api.follow(reel.ownerId, follow), function () { if (follow) showToast('Following ' + reel.name + '.'); });
+      }
+      return;
+    }
+
+    // --- Profile: social links ---
+    case 'openSocial':
+      state.fields = { socialUrl: state.linked[val] || '' };
+      openSheet({ kind: 'social', platform: val }, el);
+      break;
+    case 'saveSocial': {
+      var url = (state.fields.socialUrl || '').trim();
+      if (!/^https?:\/\/\S+\.\S+/.test(url)) { showToast('Paste the full link, starting with https://'); break; }
+      var PLATFORM = { ig: 'instagram', yt: 'youtube', sp: 'spotify', sc: 'soundcloud' };
+      var label = SOCIALS.filter(function (x) { return x.k === val; })[0].label;
+      save_(api.setSocial(PLATFORM[val], url), function () { closeSheet(); showToast(label + ' linked.'); });
+      return;
+    }
+    case 'removeSocial': {
+      var P2 = { ig: 'instagram', yt: 'youtube', sp: 'spotify', sc: 'soundcloud' };
+      save_(api.removeSocial(P2[val]), function () { closeSheet(); showToast('Link removed.'); });
+      return;
+    }
+
+    // --- Profile: uploads ---
+    case 'openUpload':
+      pendingFile = null;
+      state.upload = {};
+      state.fields = {};
+      state.picks = { inReels: val === 'audio' ? 'No' : 'Yes' };
+      openSheet({ kind: 'upload', mediaKind: val }, el);
+      break;
+    case 'upload': {
+      var u = UPLOAD[val];
+      if (!pendingFile) { showToast('Choose a file first.'); break; }
+      if (!u.type.test(pendingFile.type)) { showToast('That file isn’t ' + (val === 'audio' ? 'audio' : 'a ' + u.label) + '. Pick a ' + u.label + ' file.'); break; }
+      if (pendingFile.size > MAX_UPLOAD) { showToast('That file is over 50 MB. Try a shorter or smaller one.'); break; }
+      var inReels = val !== 'audio' && state.picks.inReels === 'Yes';
+      save_(api.upload(pendingFile, val, (state.fields.mediaTitle || '').trim(), (state.fields.mediaCaption || '').trim(), inReels), function () {
+        pendingFile = null;
+        state.upload = {};
+        closeSheet();
+        showToast('Uploaded.' + (inReels ? ' It’s in Reels too.' : ''));
+      });
+      return;
+    }
+    case 'openMedia': openSheet({ kind: 'media', id: id }, el); break;
+    case 'removeMedia': {
+      var item = api.me.media.filter(function (x) { return x.id === id; })[0];
+      if (!item) break;
+      save_(api.removeMedia(item), function () { closeSheet(); showToast('Removed.'); });
+      return;
+    }
   }
   render();
 }
+
+// choosing a file in the upload sheet
+root.addEventListener('change', function (e) {
+  var el = e.target.closest('input[data-file]');
+  if (!el) return;
+  pendingFile = el.files && el.files[0] || null;
+  state.upload = pendingFile ? { name: pendingFile.name, size: pendingFile.size, type: pendingFile.type } : {};
+  render();
+});
 
 // typing in a form field: remember it without re-rendering (so focus stays put)
 root.addEventListener('input', function (e) {

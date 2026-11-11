@@ -11,7 +11,7 @@ A clickable prototype of a gig marketplace for musicians, DJs, singers, and venu
 - **Profiles**: artists get a portfolio and linkable socials; venues get a photo grid and stage details.
 - **Accounts**: sign up as an artist or a venue (email + password), then create your profile (name, what you do or book, styles, town). **Profile → My events** shows your upcoming bookings, past events, and what's still waiting (your applications, or your open gigs and how many applied).
 
-Everything is stored in a Supabase database (see [`db/`](db/README.md)); `api.js` holds every database call. Reels, likes and the social-link buttons are still sample data in this browser until uploads are built.
+Everything is stored in Supabase (see [`db/`](db/README.md)); `api.js` holds every database call. Uploads (videos, audio, venue photos, up to 50 MB each) go to Supabase Storage; choose **Show in Reels** to put one in the feed. Likes, Follow, Save venue, Invite to a gig and social links are saved to your account. The sample reels from the demo have no files, so they show a colored card instead of a video.
 
 ## Demo the full flow (about 2 minutes)
 
@@ -55,8 +55,8 @@ All in `index.html`:
 - `RANGE_MILES` sets how many miles "My town", "My region", and "Statewide" cover.
 - `HOME` is where "you" are: your profile's town, set when you sign in. Distances are worked out from each venue's `lat` and `lng` (straight-line miles).
 - `TOWNS` lists the towns you can pick on your profile, and the map's town bubbles and **By area** list. Add a town here (with its center) to offer it.
-- `REELS` holds the sample reels. Gigs, applicants, bookings and the Musicians board come from the database through `api.js`.
+- Everything on screen (gigs, applicants, bookings, the Musicians board, Reels, profiles) comes from the database through `api.js`.
 
 ## Not built yet
 
-Real uploads (video, audio, photos) and Reels from the database, editing your profile after sign-up, messaging, payments and deposits, and a fan/listener role. The database is in [`db/`](db/README.md); [`BACKEND_SETUP.md`](BACKEND_SETUP.md) is the original UI-to-database handoff.
+Editing your profile after sign-up, seeing gig invitations as an artist, messaging, payments and deposits, and a fan/listener role. The database is in [`db/`](db/README.md); [`BACKEND_SETUP.md`](BACKEND_SETUP.md) is the original UI-to-database handoff.

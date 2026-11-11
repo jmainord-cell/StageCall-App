@@ -114,11 +114,11 @@
           var a = api.me.artist, v = api.me.venue;
           // your linked socials and your own portfolio / photos
           return Promise.all([
-            a ? sb.from('social_links').select('platform').eq('artist_id', a.id).then(check) : [],
-            a || v ? sb.from('media').select('kind, title').eq(a ? 'artist_id' : 'venue_id', (a || v).id).order('created_at').then(check) : []
+            a ? sb.from('social_links').select('platform, url').eq('artist_id', a.id).then(check) : [],
+            a || v ? sb.from('media').select('id, kind, title, caption, storage_path, in_reels').eq(a ? 'artist_id' : 'venue_id', (a || v).id).order('created_at').then(check) : []
           ]).then(function (m) {
-            api.me.socials = m[0].map(function (x) { return x.platform; });
-            api.me.media = m[1];
+            api.me.socials = m[0];
+            api.me.media = m[1].map(function (x) { x.url = api.mediaUrl(x.storage_path); return x; });
             return api.me;
           });
         });
@@ -235,6 +235,84 @@
           });
           return out;
         });
+      });
+    },
+
+    // -------------------------------------------------------------
+    // Reels: the feed, and what you've liked / followed / saved / invited
+    // -------------------------------------------------------------
+    // Public link to an uploaded file. Sample rows ("sample/...") have no file.
+    mediaUrl: function (path) {
+      if (!path || /^sample\//.test(path)) return null;
+      return sb.storage.from('media').getPublicUrl(path).data.publicUrl;
+    },
+    loadReels: function () {
+      var me = api.me, none = Promise.resolve([]);
+      return Promise.all([
+        sb.from('reel_cards').select('*').eq('in_reels', true).order('created_at', { ascending: false }).then(check),
+        sb.from('likes').select('media_id').eq('profile_id', me.userId).then(check),
+        sb.from('follows').select('artist_id').eq('profile_id', me.userId).then(check),
+        sb.from('saved_venues').select('venue_id').eq('profile_id', me.userId).then(check),
+        me.venue ? sb.from('invitations').select('artist_id').eq('venue_id', me.venue.id).then(check) : none
+      ]).then(function (r) {
+        var set = function (rows, key) { var o = {}; rows.forEach(function (x) { o[x[key]] = true; }); return o; };
+        return {
+          reels: r[0].map(function (m) {
+            var artist = m.owner_kind === 'artist';
+            return {
+              id: m.id, kind: m.owner_kind, mediaKind: m.kind, ownerId: artist ? m.artist_id : m.venue_id,
+              mine: artist ? !!(me.artist && me.artist.id === m.artist_id) : !!(me.venue && me.venue.id === m.venue_id),
+              name: m.name, line: artist ? artistLine(m.act_type, m.genres) : (m.venue_kind || 'Venue'),
+              where: null, town: m.town || '', lat: m.lat, lng: m.lng, caption: m.caption || m.title || '',
+              bg: bgFor(m.id), url: api.mediaUrl(m.storage_path)
+            };
+          }).map(function (x) { x.where = x.mine ? x.town : (milesFrom(x.lat, x.lng) || x.town); return x; }),
+          liked: set(r[1], 'media_id'), following: set(r[2], 'artist_id'), saved: set(r[3], 'venue_id'), invited: set(r[4], 'artist_id')
+        };
+      });
+    },
+    like: function (mediaId, on) {
+      return (on ? sb.from('likes').insert({ profile_id: api.me.userId, media_id: mediaId })
+                 : sb.from('likes').delete().eq('profile_id', api.me.userId).eq('media_id', mediaId)).then(check);
+    },
+    follow: function (artistId, on) {
+      return (on ? sb.from('follows').insert({ profile_id: api.me.userId, artist_id: artistId })
+                 : sb.from('follows').delete().eq('profile_id', api.me.userId).eq('artist_id', artistId)).then(check);
+    },
+    saveVenue: function (venueId, on) {
+      return (on ? sb.from('saved_venues').insert({ profile_id: api.me.userId, venue_id: venueId })
+                 : sb.from('saved_venues').delete().eq('profile_id', api.me.userId).eq('venue_id', venueId)).then(check);
+    },
+    invite: function (artistId) {
+      return sb.from('invitations').insert({ venue_id: api.me.venue.id, artist_id: artistId }).then(check);
+    },
+
+    // -------------------------------------------------------------
+    // Profile: social links and uploads
+    // -------------------------------------------------------------
+    setSocial: function (platform, url) {
+      return sb.from('social_links').upsert({ artist_id: api.me.artist.id, platform: platform, url: url }, { onConflict: 'artist_id,platform' }).then(check);
+    },
+    removeSocial: function (platform) {
+      return sb.from('social_links').delete().eq('artist_id', api.me.artist.id).eq('platform', platform).then(check);
+    },
+    // file goes to media/<your user id>/<random>.<ext>, then a media row points at it
+    upload: function (file, kind, title, caption, inReels) {
+      var ext = (file.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '');
+      var path = api.me.userId + '/' + (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)) + '.' + ext;
+      var owner = api.me.artist ? { artist_id: api.me.artist.id } : { venue_id: api.me.venue.id };
+      return sb.storage.from('media').upload(path, file, { contentType: file.type, upsert: false }).then(check).then(function () {
+        return sb.from('media').insert(Object.assign({ kind: kind, title: title || null, caption: caption || null, storage_path: path, in_reels: inReels }, owner)).then(function (res) {
+          if (res.error) {   // don't leave an orphan file behind
+            return sb.storage.from('media').remove([path]).then(function () { throw res.error; });
+          }
+          return res.data;
+        });
+      });
+    },
+    removeMedia: function (item) {
+      return sb.from('media').delete().eq('id', item.id).then(check).then(function () {
+        if (api.mediaUrl(item.storage_path)) return sb.storage.from('media').remove([item.storage_path]).then(check);
       });
     },
 

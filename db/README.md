@@ -7,8 +7,9 @@ PostgreSQL schema for Stagecall, written for [Supabase](https://supabase.com) (f
 | `schema.sql` | Tables, types, the distance functions, and the `gig_cards` view |
 | `policies.sql` | Row-level security (who can read and write what), the sign-up trigger, and the application rules |
 | `seed.sql` | Sample data matching the prototype: 10 venues in real Arkansas towns (home is Fayetteville), 5 artists, 14 gigs (4 booked as the app's live shows, plus 3 past shows and 1 upcoming booking for "My events"), 7 reels |
-| `test.mjs` | 102 automated checks run against real Postgres |
+| `test.mjs` | 115 automated checks run against real Postgres |
 | `refresh_sample_dates.sql` | Moves the sample gigs back to next Fri / Sat / Sun before a demo (only their dates change). Run with `supabase db query --remote=<project ref> --file db/refresh_sample_dates.sql --yes`. |
+| `storage.sql` | File uploads: the public `media` bucket (50 MB, video/audio/image only) and rules that let you add or delete files only in your own folder. Supabase only; run after `policies.sql`. |
 | `migrations/` | Upgrades for the live database, applied in number order. A fresh setup doesn't need them: `schema.sql` and `policies.sql` already include every change. |
 
 ## Tables
@@ -92,7 +93,7 @@ The browser uses Supabase's public "anon" key, so **row-level security is what p
 1. Create a free project at [supabase.com](https://supabase.com).
 2. Open **SQL Editor**, paste and run `schema.sql`, then `policies.sql`, then `seed.sql` (optional).
 3. Under **Project Settings → API**, copy the **Project URL** and the **anon public** key and share them with the team. The anon key is meant to be public. **Never** commit or share the `service_role` key.
-4. Under **Storage**, create a bucket named `media` for uploads.
+4. Run `storage.sql` in the SQL Editor (creates the `media` bucket for uploads and its rules).
 5. Add the instructor to the project if they need access.
 
 To start over, run `drop schema public cascade; create schema public;`. Then grant the default Supabase privileges again, or simply create a new project.

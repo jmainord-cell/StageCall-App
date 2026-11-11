@@ -344,6 +344,42 @@ const anonTeam = (await db.query(`select has_function_privilege('anon', 'team_up
   has_function_privilege('anon', 'undo_team_up(uuid)', 'execute') b`)).rows[0];
 check('signed-out visitors cannot call team_up or undo_team_up', !anonTeam.a && !anonTeam.b, JSON.stringify(anonTeam));
 
+// --- Reels, likes, follows, saved venues, invitations, uploads ---
+await as(null);
+const reels = (await db.query(`select * from reel_cards where in_reels order by created_at`)).rows;
+check('anon sees the 7 reels, each with its owner', reels.length === 7 && reels.every(r => r.name && r.town), reels.map(r => r.name).join(', '));
+const rustyReel = reels.find(r => r.name === 'The Rusty Anchor');
+check('a venue reel carries the venue kind, an artist reel the act', rustyReel.venue_kind === 'Bar with a small stage'
+  && reels.find(r => r.name === 'DJ Kestrel').act_type === 'DJ');
+await as(MARA);
+await db.query(`insert into likes (profile_id, media_id) values ($1, $2)`, [MARA, rustyReel.id]);
+await db.query(`insert into follows (profile_id, artist_id) values ($1, $2)`, [MARA, KESTREL]);
+await db.query(`insert into saved_venues (profile_id, venue_id) values ($1, $2)`, [MARA, rustyReel.venue_id]);
+check('Mara can like a reel, follow an artist and save a venue',
+  (await db.query(`select (select count(*) from likes) + (select count(*) from follows) + (select count(*) from saved_venues) n`)).rows[0].n == 3);
+await db.query(`delete from likes where media_id = $1`, [rustyReel.id]);
+check('and unlike it again', (await db.query(`select count(*)::int n from likes`)).rows[0].n === 0);
+await expectError("an artist can't send gig invitations",
+  `insert into invitations (venue_id, artist_id) values ('10000000-0000-0000-0000-000000000001', $1)`, [KESTREL]);
+const clip = (await db.query(`insert into media (artist_id, kind, title, storage_path, in_reels)
+  values ($1, 'video', 'New clip', $2, true) returning id`, [MARA_ARTIST, MARA + '/clip.mp4'])).rows[0].id;
+check('Mara can add a video to her portfolio and Reels', !!clip);
+await expectError("Mara can't add media to DJ Kestrel's portfolio",
+  `insert into media (artist_id, kind, storage_path) values ($1, 'video', 'x/y.mp4')`, [KESTREL]);
+await as(CORNER);
+await db.query(`insert into invitations (venue_id, artist_id) values ('10000000-0000-0000-0000-000000000001', $1)`, [MARA_ARTIST]);
+check('a venue can invite an artist to a gig', (await db.query(`select count(*)::int n from invitations`)).rows[0].n === 1);
+await as(MARA);
+check('the artist sees the invitation', (await db.query(`select count(*)::int n from invitations`)).rows[0].n === 1);
+await as(SAMPLE_ART);
+check("others don't see it", (await db.query(`select count(*)::int n from invitations`)).rows[0].n === 0);
+check("others can't delete Mara's media", (await db.query(`delete from media where id = $1`, [clip])).affectedRows === 0);
+await as(MARA);
+check('Mara can remove her own media', (await db.query(`delete from media where id = $1`, [clip])).affectedRows === 1);
+await as(null);
+check("anon sees nobody's follows or saved venues",
+  (await db.query(`select (select count(*) from follows) + (select count(*) from saved_venues) n`)).rows[0].n == 0);
+
 // --- RLS: messaging ---
 await as(MARA);
 const conv = (await db.query(`insert into conversations (created_by, gig_id) values ($1, $2) returning id`, [MARA, GIG_CORNER])).rows[0].id;
