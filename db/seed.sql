@@ -14,12 +14,12 @@
 
 -- Next given weekday (1 = Mon ... 7 = Sun) strictly after today, Arkansas time.
 -- pg_temp: exists only while this file runs.
-create function pg_temp.next_day(p_isodow int) returns date
+create or replace function pg_temp.next_day(p_isodow int) returns date
 language sql stable as $$
   select (now() at time zone 'America/Chicago')::date
        + ((p_isodow - extract(isodow from (now() at time zone 'America/Chicago'))::int + 6) % 7 + 1)
 $$;
-create function pg_temp.at_local(p_day date, p_time time) returns timestamptz
+create or replace function pg_temp.at_local(p_day date, p_time time) returns timestamptz
 language sql stable as $$ select (p_day + p_time) at time zone 'America/Chicago' $$;
 
 insert into auth.users (id, email, raw_user_meta_data) values

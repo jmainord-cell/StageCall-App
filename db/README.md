@@ -7,7 +7,8 @@ PostgreSQL schema for Stagecall, written for [Supabase](https://supabase.com) (f
 | `schema.sql` | Tables, types, the distance functions, and the `gig_cards` view |
 | `policies.sql` | Row-level security (who can read and write what), the sign-up trigger, and the application rules |
 | `seed.sql` | Sample data matching the prototype: 10 venues in real Arkansas towns (home is Fayetteville), 5 artists, 10 gigs (4 already booked as live shows), 7 reels |
-| `test.mjs` | 39 automated checks run against real Postgres |
+| `test.mjs` | 53 automated checks run against real Postgres |
+| `refresh_sample_dates.sql` | Moves the sample gigs back to next Fri / Sat / Sun before a demo (only their dates change). Run with `supabase db query --remote=<project ref> --file db/refresh_sample_dates.sql --yes`. |
 | `migrations/` | Upgrades for the live database, applied in number order. A fresh setup doesn't need them: `schema.sql` and `policies.sql` already include every change. |
 
 ## Tables
@@ -74,6 +75,7 @@ The browser uses Supabase's public "anon" key, so **row-level security is what p
 - An application is visible only to the artist who sent it and to the venue that owns the gig.
 - The artist can only apply or withdraw. The venue can only accept or decline.
 - Messages are visible only to members of the conversation, and only the sender can post as themselves.
+- The map's live shows come from the `live_shows` view: venue, town, map position, time and the booked artist's name only. Bookings themselves (pay, deposit, payment status) stay private.
 - Helper functions live in a `private` schema that the API doesn't expose, so they can't be called from the browser.
 
 `test.mjs` tries to break each of these rules.

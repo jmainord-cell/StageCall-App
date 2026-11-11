@@ -116,6 +116,34 @@ const kes = await reach(KESTREL, 'Statewide');
 check('Kestrel (Fort Smith) / Statewide = 3: venue Town/Region limits respected', kes.length === 3, kes.map(r => r.venue_name).join(', '));
 check('Kestrel / Statewide / DJ only = 1 (Velvet Room)', (await reach(KESTREL, 'Statewide', 'DJ')).map(r => r.venue_name).join() === 'Velvet Room');
 
+// --- Live shows on the map (public view over private bookings) ---
+const LIVE4 = 'Brick & Barrel=Brass Tacks Trio, Depot Taproom=DJ Kestrel, Lakeside Lodge=Eli Park, The Rusty Anchor=The Loose Ends';
+const liveNames = async () => (await db.query(`select venue_name, artist_name from live_shows`)).rows
+  .map(r => r.venue_name + '=' + r.artist_name).sort().join(', ');
+await as(null);
+check('anon sees the 4 live shows for the map', (await liveNames()) === LIVE4, await liveNames());
+const liveCols = (await db.query(`select * from live_shows limit 1`)).fields.map(f => f.name);
+check('live shows expose no pay or payment details', !liveCols.some(c => /pay|deposit|payment/.test(c)), liveCols.join(', '));
+check('anon still cannot read the bookings table', (await db.query(`select * from bookings`)).rows.length === 0);
+const viewUnsafe = (await db.query(`select count(*)::int n from pg_class c join pg_namespace s on s.oid = c.relnamespace
+  where s.nspname = 'public' and c.relkind = 'v' and not coalesce(c.reloptions::text[] @> '{security_invoker=true}', false)`)).rows[0].n;
+check('every public view runs with the caller\'s permissions', viewUnsafe === 0, `n=${viewUnsafe}`);
+await asAdmin();
+await db.query(`update gigs set starts_at = now() - interval '5 hours' where id = $1`, [GIG_RUSTY]);
+check('a show drops off the map 4 hours after it starts', !(await liveNames()).includes('Rusty Anchor'));
+
+// --- refresh_sample_dates.sql brings stale sample dates back ---
+await db.exec(readFileSync(new URL('refresh_sample_dates.sql', DB), 'utf8'));
+const seeded = (await db.query(`select id, starts_at from gigs order by id`)).rows;
+await db.exec(`update gigs set starts_at = starts_at - interval '30 days'`);
+check('with stale dates, gigs and live shows disappear',
+  (await reach(MARA_ARTIST, 'Statewide')).length === 0 && (await liveNames()) === '');
+await db.exec(readFileSync(new URL('refresh_sample_dates.sql', DB), 'utf8'));
+const refreshed = (await db.query(`select id, starts_at from gigs order by id`)).rows;
+check('refresh sets the same dates as seed.sql', JSON.stringify(seeded) === JSON.stringify(refreshed));
+const counts3 = [(await reach(MARA_ARTIST, 'Town')).length, (await reach(MARA_ARTIST, 'Region')).length, (await reach(MARA_ARTIST, 'Statewide')).length];
+check('after refresh: Mara 4 / 5 / 6 and 4 live shows', counts3.join('/') === '4/5/6' && (await liveNames()) === LIVE4, counts3.join('/'));
+
 // --- RLS: browsing ---
 await as(null);
 check('anon can browse the 6 open gigs, not the filled ones', (await db.query(`select * from gig_cards`)).rows.length === 6);
