@@ -256,3 +256,77 @@ language sql stable security invoker set search_path = public as $$
     and (reach_miles(c.reach) is null or d.miles <= reach_miles(c.reach))
   order by d.miles, c.starts_at
 $$;
+
+-- ---------------------------------------------------------------
+-- Musicians board: artists looking for other artists (a band needs a
+-- singer, a solo act needs a backing band). Others tap "I'm interested";
+-- the poster picks one with Team up, or passes.
+-- ---------------------------------------------------------------
+create type collab_purpose as enum ('Fill-in for a show', 'Opening act', 'Backing band', 'Join my act', 'Jam / session');
+
+-- Where the post is comes from the poster's artist row (town, lat, lng).
+create table collab_posts (
+  id          uuid primary key default gen_random_uuid(),
+  artist_id   uuid not null references artists (id) on delete cascade,  -- who posted
+  wants       act_type not null,                                        -- who they're looking for
+  purpose     collab_purpose not null,
+  when_text   text not null check (length(when_text) between 1 and 40),  -- 'Sat', 'Flexible', 'Ongoing'
+  pay_text    text not null check (length(pay_text) between 1 and 40),   -- '$150', 'Split the door', 'Unpaid'
+  genre       text,                                                     -- null means "Any"
+  reach       reach_level not null default 'Region',                    -- "Draw from"
+  note        text check (length(note) <= 500),
+  status      gig_status not null default 'open',                       -- open / filled (teamed up) / cancelled
+  created_at  timestamptz not null default now()
+);
+create index collab_posts_open_idx on collab_posts (created_at desc) where status = 'open';
+create index collab_posts_artist_idx on collab_posts (artist_id);
+
+-- "I'm interested". Same statuses as applications:
+-- applied (interested) / withdrawn (took it back) / accepted (teamed up) / declined (passed).
+create table collab_responses (
+  post_id     uuid not null references collab_posts (id) on delete cascade,
+  artist_id   uuid not null references artists (id) on delete cascade,  -- who's interested
+  status      application_status not null default 'applied',
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  primary key (post_id, artist_id)
+);
+create index collab_responses_artist_idx on collab_responses (artist_id);
+
+-- Post cards for the board, with the poster's name and place.
+create view collab_cards with (security_invoker = true) as
+select p.*,
+       a.name      as poster_name,
+       a.act_type  as poster_act_type,
+       a.genres    as poster_genres,
+       a.town      as poster_town,
+       a.lat       as poster_lat,
+       a.lng       as poster_lng,
+       (select count(*) from collab_responses r
+         where r.post_id = p.id and r.status = 'applied') as interested_count
+from collab_posts p
+join artists a on a.id = p.artist_id;
+
+-- The board for an artist: open posts by others, within the distance the
+-- artist chose AND the distance the poster chose, nearest first.
+create function collab_posts_in_reach(p_artist_id uuid,
+                                      p_range reach_level default 'Region',
+                                      p_wants act_type default null)
+returns table (post_id uuid, poster_id uuid, poster_name text, poster_act_type act_type,
+               poster_genres text[], poster_town text, wants act_type,
+               purpose collab_purpose, when_text text, pay_text text, genre text,
+               note text, miles double precision)
+language sql stable security invoker set search_path = public as $$
+  select c.id, c.artist_id, c.poster_name, c.poster_act_type, c.poster_genres, c.poster_town,
+         c.wants, c.purpose, c.when_text, c.pay_text, c.genre, c.note, d.miles
+  from collab_cards c
+  cross join artists me
+  cross join lateral (select miles_between(me.lat, me.lng, c.poster_lat, c.poster_lng) as miles) d
+  where me.id = p_artist_id
+    and c.artist_id <> me.id
+    and c.status = 'open'
+    and (p_wants is null or c.wants = p_wants)
+    and (reach_miles(p_range) is null or d.miles <= reach_miles(p_range))
+    and (reach_miles(c.reach) is null or d.miles <= reach_miles(c.reach))
+  order by d.miles, c.created_at desc
+$$;

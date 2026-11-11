@@ -62,7 +62,7 @@ const counts = (await db.query(`select
   (select count(*) from artists)::int a, (select count(*) from gigs)::int g,
   (select count(*) from media where in_reels)::int r`)).rows[0];
 check('signup trigger made 4 profiles', counts.p === 4, JSON.stringify(counts));
-check('10 venues, 5 artists, 10 gigs, 7 reels', counts.v === 10 && counts.a === 5 && counts.g === 10 && counts.r === 7, JSON.stringify(counts));
+check('10 venues, 6 artists, 10 gigs, 7 reels', counts.v === 10 && counts.a === 6 && counts.g === 10 && counts.r === 7, JSON.stringify(counts));
 
 // --- Arkansas locations (HOME and venue miles from BACKEND_SETUP.md section 6) ---
 const HOME = [36.0626, -94.1574];
@@ -195,6 +195,11 @@ await expectError("can't book an artist the venue declined", `select book_artist
 check('a failed booking changes nothing', JSON.stringify(await gigState()) === '{"s":"open","n":0}', JSON.stringify(await gigState()));
 await db.query(`select book_artist($1, $2)`, [GIG_CORNER, ELI]);
 const booked = await appStatus(), bk = (await db.query(`select agreed_pay_cents p from bookings where gig_id = $1`, [GIG_CORNER])).rows[0];
+await as(SAMPLE_ART);
+check('the booked artist can still see the filled gig', (await db.query(`select id from gig_cards where id = $1`, [GIG_CORNER])).rows.length === 1);
+await as(MARA);
+check('an applicant who was not picked can still see it too', (await db.query(`select id from gig_cards where id = $1`, [GIG_CORNER])).rows.length === 1);
+await as(CORNER);
 check('book_artist: booking at the gig pay, gig filled, Eli accepted',
   JSON.stringify(await gigState()) === '{"s":"filled","n":1}' && bk.p === 18000 && booked['Eli Park'] === 'accepted', JSON.stringify(booked));
 check('others are untouched: Mara still applied ("Not selected"), Kestrel still declined',
@@ -242,6 +247,66 @@ await db.query(`insert into bookings (gig_id, artist_id, agreed_pay_cents) value
 check('venue can book the accepted artist', true);
 await as(MARA);
 check('artist can see her booking', (await db.query(`select * from bookings`)).rows.length === 1);
+
+// --- Musicians board ---
+const C1 = '40000000-0000-0000-0000-000000000001';   // The Loose Ends want a singer
+await asAdmin();
+const board = async (artist, range, wants = null) =>
+  (await db.query(`select * from collab_posts_in_reach($1, $2, $3)`, [artist, range, wants])).rows;
+check('Mara / Town = 2 posts (Eli Park, The Loose Ends)', (await board(MARA_ARTIST, 'Town')).map(r => r.poster_name).sort().join(', ') === 'Eli Park, The Loose Ends');
+check('Mara / Region = all 5 posts', (await board(MARA_ARTIST, 'Region')).length === 5);
+check('Mara / Region / wants a singer = 2 (The Loose Ends, DJ Kestrel)',
+  (await board(MARA_ARTIST, 'Region', 'Singer')).map(r => r.poster_name).sort().join(', ') === 'DJ Kestrel, The Loose Ends');
+const kb = await board(KESTREL, 'Statewide');
+check("Kestrel / Statewide = 3: not his own post, and Rosa Vale's post only draws from 75 mi",
+  kb.length === 3 && !kb.some(r => ['DJ Kestrel', 'Rosa Vale'].includes(r.poster_name)), kb.map(r => `${r.poster_name} ${r.miles.toFixed(0)}`).join(', '));
+
+await as(null);
+check('anon can browse the 5 open posts', (await db.query(`select * from collab_cards`)).rows.length === 5);
+await as(MARA);
+await db.query(`insert into collab_responses (post_id, artist_id) values ($1, $2)`, [C1, MARA_ARTIST]);
+check("Mara can say she's interested", true);
+await expectError("Mara can't reply as DJ Kestrel", `insert into collab_responses (post_id, artist_id) values ($1, $2)`, [C1, KESTREL]);
+const myPost = (await db.query(`insert into collab_posts (artist_id, wants, purpose, when_text, pay_text)
+  values ($1, 'Band', 'Backing band', 'Sat', 'Split the door') returning id`, [MARA_ARTIST])).rows[0].id;
+check('Mara can post on the board', !!myPost);
+await expectError("Mara can't post as DJ Kestrel",
+  `insert into collab_posts (artist_id, wants, purpose, when_text, pay_text) values ($1, 'Band', 'Backing band', 'Sat', 'x')`, [KESTREL]);
+await expectError("Mara can't reply to her own post", `insert into collab_responses (post_id, artist_id) values ($1, $2)`, [myPost, MARA_ARTIST]);
+check("Mara's own post isn't on her board", !(await board(MARA_ARTIST, 'Statewide')).some(r => r.post_id === myPost));
+await db.query(`update collab_responses set status = 'withdrawn' where post_id = $1 and artist_id = $2`, [C1, MARA_ARTIST]);
+await db.query(`update collab_responses set status = 'applied' where post_id = $1 and artist_id = $2`, [C1, MARA_ARTIST]);
+check('Mara can take it back and be interested again', true);
+
+const resp = async () => (await db.query(`select status::text s from collab_responses where post_id = $1 and artist_id = $2`, [C1, MARA_ARTIST])).rows[0]?.s;
+await as(SAMPLE_ART);   // owns The Loose Ends
+check('the poster sees 1 interested', (await db.query(`select interested_count::int n from collab_cards where id = $1`, [C1])).rows[0].n === 1);
+await db.query(`update collab_responses set status = 'declined' where post_id = $1 and artist_id = $2`, [C1, MARA_ARTIST]);
+await as(MARA);
+await expectError("Mara can't undo the poster's pass", `update collab_responses set status = 'applied' where post_id = $1 and artist_id = $2`, [C1, MARA_ARTIST]);
+await as(SAMPLE_ART);
+await db.query(`update collab_responses set status = 'applied' where post_id = $1 and artist_id = $2`, [C1, MARA_ARTIST]);
+check('the poster can pass and undo the pass', (await resp()) === 'applied');
+await as(MARA);
+await expectError("a responder can't team up", `select team_up($1, $2)`, [C1, MARA_ARTIST]);
+await as(SAMPLE_ART);
+await db.query(`select team_up($1, $2)`, [C1, MARA_ARTIST]);
+await as(null);
+check('team_up: the post leaves the public board', !(await db.query(`select id from collab_cards`)).rows.some(r => r.id === C1));
+await as(MARA);
+check('Mara sees "teaming up": response accepted, post still visible to her',
+  (await resp()) === 'accepted' && (await db.query(`select status::text s from collab_cards where id = $1`, [C1])).rows[0]?.s === 'filled');
+await expectError("Mara can't take it back once teamed up", `update collab_responses set status = 'withdrawn' where post_id = $1 and artist_id = $2`, [C1, MARA_ARTIST]);
+await as(SAMPLE_ART);
+await expectError("can't team up twice", `select team_up($1, $2)`, [C1, MARA_ARTIST]);
+await db.query(`select undo_team_up($1)`, [C1]);
+check('undo_team_up: post open again, Mara back to interested',
+  (await resp()) === 'applied' && (await db.query(`select status::text s from collab_posts where id = $1`, [C1])).rows[0].s === 'open');
+await as(null);
+check('anon sees no replies', (await db.query(`select * from collab_responses`)).rows.length === 0);
+const anonTeam = (await db.query(`select has_function_privilege('anon', 'team_up(uuid, uuid)', 'execute') a,
+  has_function_privilege('anon', 'undo_team_up(uuid)', 'execute') b`)).rows[0];
+check('signed-out visitors cannot call team_up or undo_team_up', !anonTeam.a && !anonTeam.b, JSON.stringify(anonTeam));
 
 // --- RLS: messaging ---
 await as(MARA);

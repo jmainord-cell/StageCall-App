@@ -66,7 +66,9 @@ insert into artists (id, owner_id, name, act_type, genres, bio, town, state, lat
   ('20000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000012', 'Eli Park', 'Solo', '{Acoustic}',
      null, 'Fayetteville', 'AR', 36.0720, -94.1300),
   ('20000000-0000-0000-0000-000000000005', '00000000-0000-0000-0000-000000000012', 'Brass Tacks Trio', 'Band', '{Blues}',
-     null, 'Rogers', 'AR', 36.3320, -94.1185);
+     null, 'Rogers', 'AR', 36.3320, -94.1185),
+  ('20000000-0000-0000-0000-000000000006', '00000000-0000-0000-0000-000000000012', 'Rosa Vale', 'Singer', '{Country}',
+     null, 'Harrison', 'AR', 36.2350, -93.1150);
 
 insert into social_links (artist_id, platform, url) values
   ('20000000-0000-0000-0000-000000000001', 'instagram', 'https://example.com/maravoss/instagram'),
@@ -104,6 +106,22 @@ from applications a join gigs g on g.id = a.gig_id
 where a.status = 'accepted';
 
 update gigs set status = 'filled' where id in (select gig_id from bookings);
+
+-- ---------------------------------------------------------------
+-- Musicians board (c1-c5 in state.gigs in index.html). Each post sits
+-- where its poster lives. "when" and "pay" are free text, as in the app.
+-- ---------------------------------------------------------------
+insert into collab_posts (id, artist_id, wants, purpose, when_text, pay_text, genre, note) values
+  ('40000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000003', 'Singer', 'Fill-in for a show', 'Sat · 9 PM', '$150',           'Indie rock',
+     'Our singer is out sick. Can you learn 8 covers by Saturday?'),                                     -- The Loose Ends, Springdale
+  ('40000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000005', 'Solo',   'Opening act',        'Fri · 7 PM', '$100',           'Blues',
+     '30-minute acoustic opener before our set at Brick & Barrel.'),                                     -- Brass Tacks Trio, Rogers
+  ('40000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000004', 'Band',   'Backing band',       'Sun · 4 PM', 'Split the door', 'Acoustic',
+     'Need bass and drums behind me for a patio show. Charts provided.'),                                -- Eli Park, Fayetteville
+  ('40000000-0000-0000-0000-000000000004', '20000000-0000-0000-0000-000000000006', 'Band',   'Join my act',        'Ongoing',    'Split the door', 'Country',
+     'Booking fair season. Looking for a steady band to tour the state with.'),                          -- Rosa Vale, Harrison
+  ('40000000-0000-0000-0000-000000000005', '20000000-0000-0000-0000-000000000002', 'Singer', 'Jam / session',      'Flexible',   'Unpaid',         'House',
+     'Want a vocalist for a live house set. Let’s try a session first.');                                -- DJ Kestrel, Fort Smith
 
 -- ---------------------------------------------------------------
 -- Media: reels (REELS in index.html) and Mara's portfolio

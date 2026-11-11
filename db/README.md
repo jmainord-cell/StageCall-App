@@ -7,7 +7,7 @@ PostgreSQL schema for Stagecall, written for [Supabase](https://supabase.com) (f
 | `schema.sql` | Tables, types, the distance functions, and the `gig_cards` view |
 | `policies.sql` | Row-level security (who can read and write what), the sign-up trigger, and the application rules |
 | `seed.sql` | Sample data matching the prototype: 10 venues in real Arkansas towns (home is Fayetteville), 5 artists, 10 gigs (4 already booked as live shows), 7 reels |
-| `test.mjs` | 69 automated checks run against real Postgres |
+| `test.mjs` | 94 automated checks run against real Postgres |
 | `refresh_sample_dates.sql` | Moves the sample gigs back to next Fri / Sat / Sun before a demo (only their dates change). Run with `supabase db query --remote=<project ref> --file db/refresh_sample_dates.sql --yes`. |
 | `migrations/` | Upgrades for the live database, applied in number order. A fresh setup doesn't need them: `schema.sql` and `policies.sql` already include every change. |
 
@@ -33,6 +33,9 @@ erDiagram
   profiles ||--o{ saved_venues : "saves venues"
   conversations ||--o{ conversation_members : has
   conversations ||--o{ messages : contains
+  artists ||--o{ collab_posts : "posts on board"
+  collab_posts ||--o{ collab_responses : receives
+  artists ||--o{ collab_responses : "is interested"
   profiles ||--o{ messages : sends
 ```
 
@@ -48,6 +51,7 @@ erDiagram
 | `media` | Portfolio videos/audio, venue photos, and the Reels feed (`in_reels = true`) |
 | `likes`, `follows`, `saved_venues` | Heart, "Follow", "Save venue" |
 | `conversations`, `messages` | Messaging (not in the UI yet) |
+| `collab_posts`, `collab_responses` | Musicians board: "Looking for a singer" posts, "I'm interested", Team up / Pass. `collab_posts_in_reach()` is the board's range filter; `team_up()` / `undo_team_up()` work like booking. |
 
 Some conventions:
 - **Money is stored in cents** (`pay_cents = 18000` means $180), which avoids rounding errors.
@@ -72,7 +76,8 @@ The prototype only applies the first check. Town is 15 mi, Region is 75 mi, and 
 The browser uses Supabase's public "anon" key, so **row-level security is what protects the data**:
 - Profiles, acts, venues, media and open gigs can be read by anyone.
 - Only the owner can edit them.
-- An application is visible only to the artist who sent it and to the venue that owns the gig.
+- An application is visible only to the artist who sent it and to the venue that owns the gig. An artist keeps seeing a gig they applied to after it's filled.
+- The same goes for the Musicians board: open posts are public, a reply is visible only to the two musicians, and you can't reply to your own post.
 - The artist can only apply or withdraw. The venue can only accept or decline, and undo a decline or a booking. Each change is one step (an artist can't re-apply after being declined, or withdraw once booked).
 - Booking is one call, `book_artist(gig, artist)`, and undoing it is `cancel_booking(gig)`. Each either fully happens or doesn't happen at all. A booking with a payment on it can't be undone.
 - Messages are visible only to members of the conversation, and only the sender can post as themselves.

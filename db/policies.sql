@@ -37,6 +37,14 @@ language sql stable security definer set search_path = public as $$
                  where g.id = p_gig_id and v.owner_id = auth.uid())
 $$;
 
+-- True if the caller (as one of their acts) applied to this gig, so they
+-- can still see it once it's filled or cancelled.
+create function private.applied_to_gig(p_gig_id uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from applications x join artists a on a.id = x.artist_id
+                 where x.gig_id = p_gig_id and a.owner_id = auth.uid())
+$$;
+
 create function private.in_conversation(p_conversation_id uuid) returns boolean
 language sql stable security definer set search_path = public as $$
   select exists (select 1 from conversation_members
@@ -161,8 +169,10 @@ create policy "manage own media"      on media for all
   using (private.owns_artist(artist_id) or private.owns_venue(venue_id))
   with check (private.owns_artist(artist_id) or private.owns_venue(venue_id));
 
--- Open gigs are public; a venue also sees its own filled/cancelled gigs.
-create policy "open gigs are public"  on gigs for select using (status = 'open' or private.owns_venue(venue_id));
+-- Open gigs are public; a venue also sees its own filled/cancelled gigs,
+-- and an artist still sees a gig they applied to (booked or not).
+create policy "open gigs are public"  on gigs for select
+  using (status = 'open' or private.owns_venue(venue_id) or private.applied_to_gig(id));
 create policy "manage own gigs"       on gigs for all
   using (private.owns_venue(venue_id)) with check (private.owns_venue(venue_id));
 
@@ -310,3 +320,123 @@ revoke execute on function book_artist(uuid, uuid) from public, anon;
 revoke execute on function cancel_booking(uuid) from public, anon;
 grant execute on function book_artist(uuid, uuid) to authenticated;
 grant execute on function cancel_booking(uuid) to authenticated;
+
+-- ---------------------------------------------------------------
+-- Musicians board rules. They mirror gigs and applications:
+-- open posts are public; the poster manages their post and teams up or
+-- passes; the responder says "I'm interested" or takes it back.
+-- ---------------------------------------------------------------
+create function private.owns_collab_post(p_post_id uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from collab_posts p join artists a on a.id = p.artist_id
+                 where p.id = p_post_id and a.owner_id = auth.uid())
+$$;
+
+-- True if the caller (as one of their acts) replied to this post.
+create function private.replied_to_post(p_post_id uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from collab_responses r join artists a on a.id = r.artist_id
+                 where r.post_id = p_post_id and a.owner_id = auth.uid())
+$$;
+
+-- Same one-step status changes as applications:
+--   responder: applied -> withdrawn, withdrawn -> applied
+--   poster:    applied -> accepted / declined, declined -> applied (undo
+--              pass), accepted -> applied (undo team-up)
+create function private.check_response_update() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare
+  step text;
+begin
+  if auth.uid() is null then
+    return new;
+  end if;
+  if new.post_id <> old.post_id or new.artist_id <> old.artist_id then
+    raise exception 'A response cannot be moved to another post or artist';
+  end if;
+  if new.status <> old.status then
+    step := old.status || '>' || new.status;
+    if private.owns_artist(new.artist_id) and step in ('applied>withdrawn', 'withdrawn>applied') then
+      null;  -- take it back / interested again
+    elsif private.owns_collab_post(new.post_id)
+          and step in ('applied>accepted', 'applied>declined', 'declined>applied', 'accepted>applied') then
+      null;  -- team up / pass / undo pass / undo team-up
+    elsif step in ('applied>withdrawn', 'withdrawn>applied') then
+      raise exception 'Only the musician who replied can take it back';
+    elsif step in ('applied>accepted', 'applied>declined', 'declined>applied', 'accepted>applied') then
+      raise exception 'Only the poster can team up, pass or undo';
+    else
+      raise exception 'A response cannot go from % to %', old.status, new.status;
+    end if;
+  end if;
+  new.updated_at := now();
+  return new;
+end $$;
+
+create trigger response_update_rules
+  before update on collab_responses
+  for each row execute function private.check_response_update();
+
+revoke execute on function private.check_response_update() from public, anon, authenticated;
+
+alter table collab_posts     enable row level security;
+alter table collab_responses enable row level security;
+
+-- Open posts are public; the poster also sees their own filled/cancelled
+-- posts, and a musician still sees a post they replied to.
+create policy "open posts are public" on collab_posts for select
+  using (status = 'open' or private.owns_artist(artist_id) or private.replied_to_post(id));
+create policy "manage own posts"      on collab_posts for all
+  using (private.owns_artist(artist_id)) with check (private.owns_artist(artist_id));
+
+-- Only the two sides see a response.
+create policy "see own responses"     on collab_responses for select
+  using (private.owns_artist(artist_id) or private.owns_collab_post(post_id));
+-- Reply as your own act, to someone else's open post.
+create policy "reply to open posts"   on collab_responses for insert
+  with check (private.owns_artist(artist_id)
+              and exists (select 1 from collab_posts p
+                          where p.id = post_id and p.status = 'open' and p.artist_id <> collab_responses.artist_id));
+create policy "either side updates"   on collab_responses for update
+  using (private.owns_artist(artist_id) or private.owns_collab_post(post_id))
+  with check (private.owns_artist(artist_id) or private.owns_collab_post(post_id));
+
+-- Team up in one step, and undo it (same idea as book_artist / cancel_booking).
+--   sb.rpc('team_up', { p_post_id, p_artist_id })
+--   sb.rpc('undo_team_up', { p_post_id })
+create function team_up(p_post_id uuid, p_artist_id uuid) returns void
+language plpgsql security invoker set search_path = public as $$
+begin
+  if not private.owns_collab_post(p_post_id) then
+    raise exception 'Only the musician who posted this can team up';
+  end if;
+  perform 1 from collab_posts where id = p_post_id and status = 'open' for update;
+  if not found then
+    raise exception 'This post is not open';
+  end if;
+  update collab_responses set status = 'accepted'
+    where post_id = p_post_id and artist_id = p_artist_id and status = 'applied';
+  if not found then
+    raise exception 'This musician has no open reply on this post';
+  end if;
+  update collab_posts set status = 'filled' where id = p_post_id;
+end $$;
+
+create function undo_team_up(p_post_id uuid) returns void
+language plpgsql security invoker set search_path = public as $$
+begin
+  if not private.owns_collab_post(p_post_id) then
+    raise exception 'Only the musician who posted this can undo the team-up';
+  end if;
+  perform 1 from collab_posts where id = p_post_id and status = 'filled' for update;
+  if not found then
+    raise exception 'This post has no team-up to undo';
+  end if;
+  update collab_responses set status = 'applied' where post_id = p_post_id and status = 'accepted';
+  update collab_posts set status = 'open' where id = p_post_id;
+end $$;
+
+revoke execute on function team_up(uuid, uuid) from public, anon;
+revoke execute on function undo_team_up(uuid) from public, anon;
+grant execute on function team_up(uuid, uuid) to authenticated;
+grant execute on function undo_team_up(uuid) to authenticated;
