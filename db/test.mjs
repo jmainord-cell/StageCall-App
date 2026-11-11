@@ -43,17 +43,18 @@ await db.exec(`
   create function auth.uid() returns uuid language sql stable as
     $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
   create role anon; create role authenticated;
+  -- Like Supabase: new tables and functions in public are granted to anon and
+  -- authenticated when they are created, so the files' own revokes still count.
+  grant usage on schema public, auth to anon, authenticated;
+  grant execute on all functions in schema auth to anon, authenticated;
+  alter default privileges in schema public grant all on tables to anon, authenticated;
+  alter default privileges in schema public grant execute on functions to anon, authenticated;
 `);
 
 for (const f of ['schema.sql', 'policies.sql', 'seed.sql']) {
   try { await db.exec(readFileSync(new URL(f, DB), 'utf8')); check(`load ${f}`, true); }
   catch (e) { check(`load ${f}`, false, e.message); process.exit(1); }
 }
-await db.exec(`
-  grant usage on schema public, auth to anon, authenticated;
-  grant all on all tables in schema public to anon, authenticated;
-  grant execute on all functions in schema public, auth to anon, authenticated;
-`);
 
 // --- Data loaded ---
 const counts = (await db.query(`select
@@ -170,8 +171,65 @@ await as(CORNER);
 const cards = (await db.query(`select applicant_count::int n from gig_cards where id = $1`, [GIG_CORNER])).rows[0];
 check('venue sees applicant count on its gig', cards.n === 1, `n=${cards.n}`);
 check("Corner Stage can't see applications to other venues' gigs", (await db.query(`select * from applications`)).rows.length === 1);
-await db.query(`update applications set status = 'accepted' where gig_id = $1`, [GIG_CORNER]);
-check('venue can accept an applicant', (await db.query(`select status::text s from applications where gig_id = $1`, [GIG_CORNER])).rows[0].s === 'accepted');
+
+// --- Book in one step, undo booking, undo decline ---
+// Corner Stage's gig: Mara applied; Eli and Kestrel apply too.
+await asAdmin();
+await db.query(`insert into applications (gig_id, artist_id) values ($1, $2), ($1, $3)`, [GIG_CORNER, ELI, KESTREL]);
+const appStatus = async () => Object.fromEntries((await db.query(
+  `select a.name, x.status::text s from applications x join artists a on a.id = x.artist_id where x.gig_id = $1`, [GIG_CORNER])).rows.map(r => [r.name, r.s]));
+const gigState = async () => (await db.query(`select g.status::text s, (select count(*)::int from bookings b where b.gig_id = g.id) n
+  from gigs g where g.id = $1`, [GIG_CORNER])).rows[0];
+await as(CORNER);
+await db.query(`update applications set status = 'declined' where gig_id = $1 and artist_id = $2`, [GIG_CORNER, KESTREL]);
+await db.query(`update applications set status = 'applied' where gig_id = $1 and artist_id = $2`, [GIG_CORNER, KESTREL]);
+check('venue can undo a decline', (await appStatus())['DJ Kestrel'] === 'applied');
+await db.query(`update applications set status = 'declined' where gig_id = $1 and artist_id = $2`, [GIG_CORNER, KESTREL]);
+await as(SAMPLE_ART);
+await expectError("declined artist can't undo the venue's decline",
+  `update applications set status = 'applied' where gig_id = $1 and artist_id = $2`, [GIG_CORNER, KESTREL]);
+await as(MARA);
+await expectError('an artist cannot book', `select book_artist($1, $2)`, [GIG_CORNER, MARA_ARTIST]);
+await as(CORNER);
+await expectError("can't book an artist the venue declined", `select book_artist($1, $2)`, [GIG_CORNER, KESTREL]);
+check('a failed booking changes nothing', JSON.stringify(await gigState()) === '{"s":"open","n":0}', JSON.stringify(await gigState()));
+await db.query(`select book_artist($1, $2)`, [GIG_CORNER, ELI]);
+const booked = await appStatus(), bk = (await db.query(`select agreed_pay_cents p from bookings where gig_id = $1`, [GIG_CORNER])).rows[0];
+check('book_artist: booking at the gig pay, gig filled, Eli accepted',
+  JSON.stringify(await gigState()) === '{"s":"filled","n":1}' && bk.p === 18000 && booked['Eli Park'] === 'accepted', JSON.stringify(booked));
+check('others are untouched: Mara still applied ("Not selected"), Kestrel still declined',
+  booked['Mara Voss'] === 'applied' && booked['DJ Kestrel'] === 'declined');
+await expectError("can't book a gig that's already booked", `select book_artist($1, $2)`, [GIG_CORNER, MARA_ARTIST]);
+await as(null);
+check('the new booking shows up as a live show', (await liveNames()).includes('The Corner Stage=Eli Park'));
+await as(SAMPLE_ART);
+await expectError("booked artist can't withdraw on their own",
+  `update applications set status = 'withdrawn' where gig_id = $1 and artist_id = $2`, [GIG_CORNER, ELI]);
+await as(MARA);
+await expectError("an artist can't undo a booking", `select cancel_booking($1)`, [GIG_CORNER]);
+await asAdmin();
+await db.query(`update bookings set payment_status = 'deposit_paid' where gig_id = $1`, [GIG_CORNER]);
+await as(CORNER);
+await expectError("can't undo a booking that has a payment", `select cancel_booking($1)`, [GIG_CORNER]);
+const del = await db.query(`delete from bookings where gig_id = $1`, [GIG_CORNER]);
+check("venue can't delete a paid booking directly", del.affectedRows === 0);
+await asAdmin();
+await db.query(`update bookings set payment_status = 'unpaid' where gig_id = $1`, [GIG_CORNER]);
+await as(CORNER);
+await db.query(`select cancel_booking($1)`, [GIG_CORNER]);
+const undone = await appStatus();
+check('cancel_booking: booking gone, gig open, Eli back to applied, Kestrel still declined',
+  JSON.stringify(await gigState()) === '{"s":"open","n":0}' && undone['Eli Park'] === 'applied' && undone['DJ Kestrel'] === 'declined' && undone['Mara Voss'] === 'applied', JSON.stringify(undone));
+await as(null);
+check('the undone booking leaves the map', !(await liveNames()).includes('The Corner Stage'));
+const anonExec = (await db.query(`select has_function_privilege('anon', 'book_artist(uuid, uuid)', 'execute') b,
+  has_function_privilege('anon', 'cancel_booking(uuid)', 'execute') c`)).rows[0];
+check('signed-out visitors cannot call book_artist or cancel_booking', !anonExec.b && !anonExec.c, JSON.stringify(anonExec));
+
+// --- Direct accept + booking insert still work for the venue ---
+await as(CORNER);
+await db.query(`update applications set status = 'accepted' where gig_id = $1 and artist_id = $2`, [GIG_CORNER, MARA_ARTIST]);
+check('venue can accept an applicant', (await appStatus())['Mara Voss'] === 'accepted');
 await expectError('venue cannot withdraw on the artist\'s behalf',
   `update applications set status = 'withdrawn' where gig_id = $1`, [GIG_CORNER]);
 const hijack = await db.query(`update gigs set pay_cents = 1 where id = $1`, [GIG_RUSTY]);
